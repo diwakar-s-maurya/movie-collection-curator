@@ -76,9 +76,10 @@ describe('collections', () => {
       description: null,
     })
 
-    expect((await listCollections(user.id, firstPage)).results).toEqual([
-      second,
-      first,
+    // Stats ride along on every card; what they hold is stats.test.ts.
+    expect((await listCollections(user.id, firstPage)).results).toMatchObject([
+      { id: second.id },
+      { id: first.id },
     ])
   })
 })
@@ -89,7 +90,9 @@ describe('scoping to the owner', () => {
   it('lists only the owner’s collections', async () => {
     const { alice, hers } = await twoOwners()
 
-    expect((await listCollections(alice.id, firstPage)).results).toEqual([hers])
+    expect((await listCollections(alice.id, firstPage)).results).toMatchObject([
+      { id: hers.id },
+    ])
   })
 
   it('finds nothing when the collection belongs to someone else', async () => {
@@ -105,7 +108,7 @@ describe('scoping to the owner', () => {
     const { alice, bob, his } = await twoOwners()
 
     expect(await deleteCollection(alice.id, his.id)).toBe(false)
-    expect(await findCollection(bob.id, his.id)).toEqual(his)
+    expect(await findCollection(bob.id, his.id)).toMatchObject(his)
 
     expect(await deleteCollection(bob.id, his.id)).toBe(true)
     expect(await findCollection(bob.id, his.id)).toBeNull()
