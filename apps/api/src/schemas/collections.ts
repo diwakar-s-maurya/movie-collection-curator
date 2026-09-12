@@ -9,8 +9,8 @@ const DESCRIPTION_MAX_LENGTH = 500
 
 /**
  * Trim before the length checks, so a name of nothing but spaces is rejected
- * rather than stored. Names are not unique: the id is what anything else
- * refers to.
+ * rather than stored — and so the uniqueness the `create` route enforces is
+ * over the name as stored, not over the spaces around it.
  */
 const collectionName = z
   .string()

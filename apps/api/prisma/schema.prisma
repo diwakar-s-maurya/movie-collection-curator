@@ -33,9 +33,11 @@ model User {
 }
 
 model Collection {
-  id          String  @id @default(dbgenerated("uuidv7()")) @db.Uuid
-  userId      String  @map("user_id") @db.Uuid
-  name        String
+  id     String @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  userId String @map("user_id") @db.Uuid
+  /// Stored and shown as typed. `citext` so the unique index below compares
+  /// it case-insensitively, with no lowercased copy to keep in step.
+  name        String  @db.Citext
   description String?
 
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
@@ -43,6 +45,7 @@ model Collection {
   user   User              @relation(fields: [userId], references: [id], onDelete: Cascade)
   movies CollectionMovie[]
 
+  @@unique([userId, name])
   // The list view is one user's collections, newest first.
   @@index([userId, createdAt])
   @@map("collections")

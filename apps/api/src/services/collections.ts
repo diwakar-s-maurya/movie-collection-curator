@@ -1,5 +1,5 @@
 import type { z } from 'zod'
-import { db } from '../db.js'
+import { db, isUniqueViolation } from '../db.js'
 
 import type {
   collection,
@@ -69,14 +69,28 @@ export async function findCollection(
   return { ...found, stats: await statsFor(id) }
 }
 
-export function createCollection(
+/**
+ * Creates the collection, or answers null when the user already has one by
+ * that name — case-insensitively, since `name` is `citext`.
+ *
+ * The insert is the check: the unique index rejects the duplicate, so there is
+ * no read for a second request to slip past.
+ */
+export async function createCollection(
   userId: string,
   input: z.infer<typeof createCollectionInput>,
-): Promise<Collection> {
-  return db.collection.create({
-    data: { ...input, userId },
-    select: collectionSelect,
-  })
+): Promise<Collection | null> {
+  try {
+    return await db.collection.create({
+      data: { ...input, userId },
+      select: collectionSelect,
+    })
+  } catch (error) {
+    // Collections carry one unique index, so this is that name being taken.
+    if (isUniqueViolation(error)) return null
+
+    throw error
+  }
 }
 
 /**
