@@ -16,6 +16,7 @@ import { pageSearchMiddleware, validatePageSearch } from '@/lib/search'
 import { CollectionDetail } from '@/routes/collection-detail'
 import { Collections } from '@/routes/collections'
 import { NotFound } from '@/routes/not-found'
+import { RouteError } from '@/routes/route-error'
 import { SignIn } from '@/routes/sign-in'
 
 // Code-based routes: a handful of them do not need the file-based plugin.
@@ -90,6 +91,9 @@ export const router = createRouter({
   history: createBrowserHistory(),
   context: { queryClient },
   defaultNotFoundComponent: NotFound,
+  // Every route's error boundary, including the guard's, so a failure with
+  // nothing left to show gets a screen in the app's own language.
+  defaultErrorComponent: RouteError,
 })
 
 declare module '@tanstack/react-router' {

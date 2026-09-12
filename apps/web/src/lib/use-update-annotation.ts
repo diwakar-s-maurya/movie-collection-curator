@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 
 import { normaliseNote, normaliseTags } from '@/lib/annotation'
+import { errorMessage } from '@/lib/error-message'
 import {
   type AnnotationPatch,
   type CollectionMovie,
@@ -77,7 +78,7 @@ export function useUpdateAnnotation(collectionId: string) {
       for (const [key, page] of previous ?? []) {
         queryClient.setQueryData(key, page)
       }
-      toast.error(error.message)
+      toast.error(errorMessage(error))
     },
 
     onSuccess: () =>

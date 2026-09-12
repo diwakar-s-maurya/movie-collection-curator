@@ -3,13 +3,16 @@ import { ReactQueryDevtoolsPanel } from '@tanstack/react-query-devtools'
 import { Outlet } from '@tanstack/react-router'
 import { TanStackRouterDevtoolsPanel } from '@tanstack/react-router-devtools'
 
+import { Footer } from '@/components/layout/footer'
 import { Toaster } from '@/components/ui/sonner'
 
 // The page shell and nothing else: the header belongs to the signed-in layout,
-// since sign-in is the one view with no user to put in it.
+// since sign-in has no user to put in it. The footer is the other way round —
+// TMDB's attribution is owed on every view.
 const RootLayout = () => (
   <div className="flex min-h-screen flex-col">
     <Outlet />
+    <Footer />
     {/* The app has one palette and nothing toggles `.dark`, so the theme is
         given rather than read: the CLI's Toaster asks `next-themes`, which
         without a provider falls back to the OS and would go dark under a light

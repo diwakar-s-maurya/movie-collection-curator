@@ -21,6 +21,7 @@ import { SearchDialog } from '@/components/search-dialog'
 import { StatsStrip } from '@/components/stats-strip'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
+import { errorMessage } from '@/lib/error-message'
 import { type CollectionMovie, orpc } from '@/lib/orpc'
 import { pageAfterRemoval } from '@/lib/search'
 import { useUpdateAnnotation } from '@/lib/use-update-annotation'
@@ -119,20 +120,23 @@ const CollectionDetail = () => {
       },
       // The dialog stays open on failure: the card is still in the grid, and
       // the obvious reading of a closed dialog is that the film went.
-      onError: (error) => toast.error(error.message),
+      onError: (error) => toast.error(errorMessage(error)),
     }),
   )
 
-  // A collection that was deleted in another tab, or a link that has gone
-  // stale. A normal outcome with a normal screen, not an error boundary.
+  // A collection deleted on another device, or a stale link: a normal outcome
+  // with a normal screen, not an error boundary. `BAD_REQUEST` gets the same
+  // answer — the only input is the id, so rejection means a hand-typed or
+  // truncated address, and "no collection has that id" is what to say.
   if (
     collection.error instanceof ORPCError &&
-    collection.error.code === 'NOT_FOUND'
+    (collection.error.code === 'NOT_FOUND' ||
+      collection.error.code === 'BAD_REQUEST')
   ) {
     return (
       <NotFoundPanel
-        title="This collection isn't here any more."
-        description="It may have been deleted from another tab, or the link may be out of date."
+        title="This collection isn't here."
+        description="It may have been deleted on another device, or the link may be out of date."
       />
     )
   }

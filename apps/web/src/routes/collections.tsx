@@ -17,6 +17,7 @@ import { Pagination } from '@/components/pagination'
 import { RetryableError } from '@/components/retryable-error'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
+import { errorMessage } from '@/lib/error-message'
 import { type CollectionSummary, orpc } from '@/lib/orpc'
 import { pageAfterRemoval } from '@/lib/search'
 
@@ -92,7 +93,7 @@ const Collections = () => {
       },
       // The dialog stays open on failure: the row is still there, so a toast
       // is what says why.
-      onError: (error) => toast.error(error.message),
+      onError: (error) => toast.error(errorMessage(error)),
     }),
   )
 
