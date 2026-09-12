@@ -71,7 +71,7 @@ Prisma costs a `prisma generate` step (wired into install and dev) and cannot ex
 
 ## 1. Decision log
 
-**1. oRPC instead of GraphQL.** One client, twelve procedures, and every screen wants a fixed shape — field selection buys nothing here, and GraphQL would cost a schema builder, a codegen step and a normalised client cache in a four-hour budget. oRPC infers the client straight from the router, and the same Zod schemas that validate input produce the OpenAPI contract.
+**1. oRPC instead of GraphQL.** One client, twelve procedures, and every screen wants a fixed shape — field selection buys nothing here, and GraphQL would cost a schema builder, a codegen step and a normalised client cache in a four-hour budget. oRPC infers the client straight from the router, and the same Zod schemas that validate input produce the OpenAPI contract. Plus, my GrahpQL knowledge is a bit "rusty" as I worked with it during 2019, using oRPC will help me review the code quickly given the 4 hour time budget.
 
 *What I gave up:* in GraphQL, `Collection.stats` would be a lazily resolved field the client asks for only when it needs it. With RPC there is no field selection, so the breakdowns ride along with every `collections.get` and the summary numbers with every `collections.list`. That is only acceptable because the stats are cheap at this scale (decision 5) — three aggregate queries over one collection's rows, and the list view's summary is one grouped query for all collections. If stats were expensive I would have to split them into their own procedure, which is exactly what field selection would have avoided. The mitigation is that procedures are thin wrappers over a transport-agnostic service layer, so putting GraphQL in front of the same services is a resolver-layer change, not a rewrite.
 
@@ -131,12 +131,22 @@ Each of these is a trade-off argued in the decision log, not an oversight. The f
 - **Cursor pagination**, keyed on `(added_at, id)` for a collection's movies and `(created_at, id)` for the collections list — both already the sort order, so the index is there. Fixes the wobbling page boundary and the cost of deep pages in one change.
 - **Cached or precomputed stats**, in the order set out in the 100x list below.
 - **Filter and sort the grid by genre and year.** Cheap — a filter param on `collectionMovies.list`, and the existing stats chips become clickable. The stats strip stays collection-level; filters only narrow the grid, so the stats queries never need a filtered variant.
+- **The features a curator asks for next**, roughly in that order: sharing a collection — a read-only link, then collaborators; watched/unwatched with a date, which is what a "Rainy Sunday" list is for and costs one nullable column and one more stat; import and export (Letterboxd and IMDb lists in, JSON out); move or copy a film between collections, and duplicate a collection; tag autocomplete from the user's own tags, with rename and merge, which is the easy half of decision 4 and prevents most of what makes the normalisation necessary; search and filter inside a collection; TMDB watch providers and recommendations off the collection's own genre profile, which is what the wrapper grows into.
+- **Account deletion and data export.** Delete removes the account and everything scoped to it, for good; export hands the same data back as JSON on the way out. Both are what the data-protection rules expect of anything real.
 - **Tag normalisation** (decision 4).
 - **A GraphQL facade** over the same services, if a second consumer ever makes field selection worth it.
 - **Own CDN for posters** — copy from TMDB on first add, serve from an origin I control.
 - **An `AbortSignal` pass-through on the TMDB client**, so a search the user has already typed past is cancelled upstream instead of running to completion; today only the per-request timeout cuts a call short.
 - **Tune the search debounce**, and add a throttle on top of it so continuous typing shows intermediate results instead of nothing until the 300 ms wait expires (decision 6).
 - **Extend the optimistic cache patch from annotations to membership.** `add` already answers with the row, so it could be spliced into the cached page and the stats adjusted in place, the way `useUpdateAnnotation` does for a rating — the work is the page-boundary rule.
+- **Server-side rendering** for faster first loads.
+- **Localization.**
+- **Observability.** The API logs through `console`, nothing carries a request id, and an unhandled error in a procedure becomes a generic `INTERNAL_SERVER_ERROR` for the client and is recorded nowhere. Structured logs (pino) with a request id threaded into the TMDB client, an error-reporting middleware beside the TMDB mapper in `orpc.ts`, Sentry on both sides, and metrics for procedure latency, TMDB calls against the rate limit and pool saturation. The last of those is what makes "how close is the shared TMDB key to its ceiling", the first item in the 100x list, something I can answer rather than guess.
+- **A `/health` route that means something.** Today it answers `{ ok: true }` without touching the pool, so a process whose database connection is gone keeps being sent traffic. Split liveness from readiness, and have readiness check the pool.
+- **Rate limiting**: per IP on `auth.signIn`, which today creates users without bound, and per user on `movies.search`, which spends the shared TMDB budget for everybody.
+- **API versioning.** The SPA and the API deploy separately, so a tab left open across a deploy calls an endpoint that has moved on, and fails. A version prefix on the OpenAPI routes, and a signal the client can turn into a "reload to update".
+- **CI:** typecheck, Biome, `pnpm test`, and the migrations against a scratch database; Playwright over the two things the unit suites deliberately skip, the cookie and the oRPC layer; and dependency scanning, since the vulnerable transitive Prisma packages in the history were found by hand.
+- **UI improvements**, as listed in [UI_design](UI_design.md).
 
 ## 3. What breaks first at 100x
 
@@ -147,7 +157,7 @@ Fifty thousand users with large collections, ranked by what falls over first:
 3. **Postgres connection exhaustion** once the API runs as more than one process. Fix: PgBouncer or RDS Proxy; the per-instance ceiling is already `DATABASE_POOL_MAX`, so shrinking it is a config change.
 4. **The `movies` snapshot** — unbounded growth and increasingly stale rows. Fix: the `fetched_at` TTL with background revalidation already on the list above.
 5. **Offset pagination on deep pages.** Both lists walk and discard everything before the page they want. Fix: keyset on the sort column — `(added_at, id)` for movies, `(created_at, id)` for collections.
-6. **No real auth, and unbounded user creation.** Anyone can create users and forge the cookie. Fix: real credentials, server-side sessions, rate limiting.
+6. **One primary serving every read.** This app is read-heavy, so a single Postgres instance is doing all of the work for all of those users. Fix: read replicas for the list and stats queries, and more than one API process in front of them.
 
 Already handled, so it is not on this list: movie lists are paginated, the list view's stats are one grouped query rather than one per collection, and posters are served by CDN.
 
