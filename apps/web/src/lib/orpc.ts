@@ -23,3 +23,9 @@ export const orpc = createTanstackQueryUtils(client)
 /** The signed-in user, read off the client rather than restated here: the
  * API's `user` schema stays the only definition of the shape. */
 export type User = Awaited<ReturnType<ApiClient['auth']['me']>>
+
+/** One collection as the list view sees it: the row plus the summary stats
+ * behind its card. */
+export type CollectionSummary = Awaited<
+  ReturnType<ApiClient['collections']['list']>
+>['results'][number]
