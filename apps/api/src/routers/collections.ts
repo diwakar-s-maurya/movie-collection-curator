@@ -59,9 +59,20 @@ export const collectionsRouter = {
     })
     .input(createCollectionInput)
     .output(collection)
-    .handler(({ input, context }) =>
-      collectionsService.createCollection(context.user.id, input),
-    ),
+    .handler(async ({ input, context }) => {
+      const created = await collectionsService.createCollection(
+        context.user.id,
+        input,
+      )
+      if (!created) {
+        // The name rather than the id: it is what the user has to change.
+        throw new ORPCError('CONFLICT', {
+          message: `You already have a collection called “${input.name}”.`,
+        })
+      }
+
+      return created
+    }),
 
   delete: authed
     .route({

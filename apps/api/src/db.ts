@@ -1,6 +1,6 @@
 import { PrismaPg } from '@prisma/adapter-pg'
 
-import { PrismaClient } from './generated/prisma/client.js'
+import { Prisma, PrismaClient } from './generated/prisma/client.js'
 
 /** The type a caller names when it holds the client; nothing else imports the
  * generated path. */
@@ -11,7 +11,16 @@ export type Db = PrismaClient
  * the row a `select` produces as `Prisma.XGetPayload<{ select: typeof xSelect }>`
  * without reaching into `generated/`.
  */
-export type { Prisma } from './generated/prisma/client.js'
+export type { Prisma }
+
+/** Postgres rejected a write for a unique index — asked here so a service
+ * does not have to import Prisma's error class from the generated path. */
+export function isUniqueViolation(error: unknown): boolean {
+  return (
+    error instanceof Prisma.PrismaClientKnownRequestError &&
+    error.code === 'P2002'
+  )
+}
 
 /**
  * Which database this process talks to, decided here and nowhere else.

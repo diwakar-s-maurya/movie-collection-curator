@@ -66,14 +66,20 @@ export function fakeTmdb(
   }
 }
 
+/** A collection a test needs the row of: a name already taken is a broken
+ * fixture, so it fails here rather than at the first `.id`. */
+export async function newCollection(userId: string, name: string) {
+  const created = await createCollection(userId, { name, description: null })
+  if (!created) throw new Error(`fixture name already taken: ${name}`)
+
+  return created
+}
+
 /** One signed-in user with one empty collection: the start of every case that
  * is about what happens inside a collection. */
 export async function ownerWithCollection(name: string) {
   const user = await signIn(name)
-  const collection = await createCollection(user.id, {
-    name: 'Noir',
-    description: null,
-  })
+  const collection = await newCollection(user.id, 'Noir')
 
   return { user, collection }
 }

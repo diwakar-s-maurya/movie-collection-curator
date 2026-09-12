@@ -2,12 +2,8 @@ import { afterAll, beforeEach, describe, expect, it } from 'vitest'
 
 import { db } from '../db.js'
 import { truncateAll } from '../test/db.js'
-import { ownerWithCollection } from '../test/fixtures.js'
-import {
-  createCollection,
-  findCollection,
-  listCollections,
-} from './collections.js'
+import { newCollection, ownerWithCollection } from '../test/fixtures.js'
+import { findCollection, listCollections } from './collections.js'
 import { statsFor } from './stats.js'
 
 beforeEach(truncateAll)
@@ -133,10 +129,7 @@ describe('the summary', () => {
 
   it('describes only the collection it was asked about', async () => {
     const { user, collection } = await ownerWithCollection('alice')
-    const other = await createCollection(user.id, {
-      name: 'Westerns',
-      description: null,
-    })
+    const other = await newCollection(user.id, 'Westerns')
     await stock(collection.id, [{ runtime: 170, genres: ['Crime'] }])
     await stock(other.id, [
       { runtime: 90, genres: ['Western'], tags: ['dusty'] },
@@ -192,10 +185,7 @@ describe('the breakdowns', () => {
 describe('wired into the collection views', () => {
   it('gives every card on the list its own summary', async () => {
     const { user, collection } = await ownerWithCollection('alice')
-    const empty = await createCollection(user.id, {
-      name: 'Westerns',
-      description: null,
-    })
+    const empty = await newCollection(user.id, 'Westerns')
     await stock(collection.id, [{ runtime: 170, rating: 5 }])
 
     expect(

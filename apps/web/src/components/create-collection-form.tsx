@@ -27,6 +27,9 @@ type CreateCollectionFormProps = Presentation & {
   ) => void
   pending: boolean
   error: Error | null
+  /** The names the user already has, to catch a clash before the round trip.
+   * Only the loaded page of them: the API is what enforces the rule. */
+  takenNames: string[]
 }
 
 // The API's schema is what enforces these; they only stop the browser sending
@@ -49,6 +52,7 @@ const CreateCollectionForm = ({
   pending,
   error,
   onCancel,
+  takenNames,
 }: CreateCollectionFormProps) => {
   const [name, setName] = useState('')
   // `null` is "not writing one", which is also what the API stores for a
@@ -57,6 +61,12 @@ const CreateCollectionForm = ({
   const nameRef = useRef<HTMLInputElement>(null)
 
   const trimmed = name.trim()
+  // Matched the way the column compares it, and the name that is already taken
+  // rather than a boolean: showing the user their own spelling of it is what
+  // tells them which collection they are about to duplicate.
+  const clash = takenNames.find(
+    (taken) => taken.toLowerCase() === trimmed.toLowerCase(),
+  )
 
   const onSubmit = (event: FormEvent) => {
     event.preventDefault()
@@ -102,6 +112,7 @@ const CreateCollectionForm = ({
             placeholder="Sunday night noir"
             autoFocus
             maxLength={NAME_MAX_LENGTH}
+            aria-invalid={clash !== undefined}
           />
 
           {description === null ? (
@@ -153,12 +164,20 @@ const CreateCollectionForm = ({
                 Cancel
               </Button>
             ) : null}
-            <Button type="submit" disabled={!trimmed || pending}>
+            <Button type="submit" disabled={!trimmed || pending || !!clash}>
               {pending ? 'Creating…' : 'Create'}
             </Button>
           </div>
 
-          <ErrorText error={error} />
+          {/* The clash replaces the last request's failure rather than
+              stacking under it: it is the reason the button is disabled now. */}
+          {clash ? (
+            <ErrorText
+              message={`You already have a collection called “${clash}”.`}
+            />
+          ) : (
+            <ErrorText error={error} />
+          )}
         </form>
       </CardContent>
     </Card>

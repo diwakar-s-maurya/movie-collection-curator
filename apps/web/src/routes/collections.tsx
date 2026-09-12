@@ -139,6 +139,7 @@ const Collections = () => {
         onCreate={create.mutate}
         pending={create.isPending}
         error={create.error}
+        takenNames={[]}
       />
     )
   } else {
@@ -154,6 +155,7 @@ const Collections = () => {
               pending={create.isPending}
               error={create.error}
               onCancel={closeComposer}
+              takenNames={collections.data.results.map(({ name }) => name)}
             />
           ) : null}
           {collections.data.results.map((collection) => (

@@ -2,7 +2,12 @@ import { afterAll, beforeEach, describe, expect, it } from 'vitest'
 
 import { db } from '../db.js'
 import { truncateAll } from '../test/db.js'
-import { fakeTmdb, heat, ownerWithCollection } from '../test/fixtures.js'
+import {
+  fakeTmdb,
+  heat,
+  newCollection,
+  ownerWithCollection,
+} from '../test/fixtures.js'
 import { signIn } from './auth.js'
 import {
   addMovie,
@@ -11,7 +16,6 @@ import {
   removeMovie,
   updateAnnotation,
 } from './collection-movies.js'
-import { createCollection } from './collections.js'
 
 beforeEach(truncateAll)
 afterAll(() => db.$disconnect())
@@ -59,10 +63,7 @@ describe('adding a movie', () => {
   // from the cache, whoever added it first.
   it('serves a film another collection already holds from the cache', async () => {
     const { user, collection } = await ownerWithCollection('alice')
-    const other = await createCollection(user.id, {
-      name: 'Westerns',
-      description: null,
-    })
+    const other = await newCollection(user.id, 'Westerns')
     const tmdb = fakeTmdb()
 
     const hers = await addMovie(tmdb, user.id, {
