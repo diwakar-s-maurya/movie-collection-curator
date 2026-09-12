@@ -1,5 +1,6 @@
 import { OpenAPIHandler } from '@orpc/openapi/node'
 import { OpenAPIReferencePlugin } from '@orpc/openapi/plugins'
+import { RPCHandler } from '@orpc/server/node'
 import {
   RequestHeadersPlugin,
   ResponseHeadersPlugin,
@@ -10,19 +11,31 @@ import type { RequestHandler } from 'express'
 import { router } from './routers/index.js'
 
 /**
- * Every procedure is also a plain HTTP route, taking its method and path from
- * the `route` on the procedure and its request and response schemas from the
- * same Zod schemas that validate the call. So the API is curl-able, readable
- * in the network tab, and documented at `/docs` without a second source of
- * truth to keep in step.
+ * The session is a cookie, so procedures get the request's headers to read one
+ * and a response `Headers` to set one, neither carrying Express's types. A
+ * fresh pair per handler: a plugin instance registers itself on the handler it
+ * is given.
  */
-const handler = new OpenAPIHandler(router, {
+const headerPlugins = () => [
+  new RequestHeadersPlugin(),
+  new ResponseHeadersPlugin(),
+]
+
+/**
+ * What the SPA talks to. The RPC protocol carries oRPC's own serialisation, so
+ * the client is inferred straight from `ApiRouter` with no codegen step.
+ */
+const rpcHandler = new RPCHandler(router, { plugins: headerPlugins() })
+
+/**
+ * The same procedures as plain HTTP routes, taking their method and path from
+ * the `route` on the procedure and their schemas from the Zod schemas that
+ * validate the call. The API is curl-able and documented at `/docs` with no
+ * second source of truth.
+ */
+const openapiHandler = new OpenAPIHandler(router, {
   plugins: [
-    // The session is a cookie, so procedures get the request's headers to read
-    // one and a response Headers to set one. Neither carries Express's types,
-    // so the router stays independent of what serves it.
-    new RequestHeadersPlugin(),
-    new ResponseHeadersPlugin(),
+    ...headerPlugins(),
     new OpenAPIReferencePlugin({
       docsPath: '/docs',
       schemaConverters: [new ZodToJsonSchemaConverter()],
@@ -34,15 +47,19 @@ const handler = new OpenAPIHandler(router, {
 })
 
 /**
- * Mounts the API at the root. Requests it does not recognise fall through to
- * whatever Express has below, so `/health` and the 404 still belong to
- * Express. Nothing may parse the body above this: the handler reads the
- * request stream itself.
+ * Mounts both handlers at the root: RPC under `/rpc`, the REST routes over
+ * everything else. Requests neither recognises fall through to Express below.
+ * Nothing may parse the body above this: the handlers read the stream
+ * themselves.
  */
 export function apiHandler(): RequestHandler {
   return async (req, res, next) => {
-    const { matched } = await handler.handle(req, res, { context: {} })
+    const context = {}
 
-    if (!matched) next()
+    const rpc = await rpcHandler.handle(req, res, { context, prefix: '/rpc' })
+    if (rpc.matched) return
+
+    const openapi = await openapiHandler.handle(req, res, { context })
+    if (!openapi.matched) next()
   }
 }

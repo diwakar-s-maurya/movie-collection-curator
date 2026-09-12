@@ -13,5 +13,8 @@
     "noEmit": true,
     "jsx": "react-jsx"
   },
-  "include": ["src"]
+  "include": ["src"],
+  // Type-only: the oRPC client is inferred from the API's router type, so a
+  // procedure renamed on the server fails the build here.
+  "references": [{ "path": "../api" }]
 }

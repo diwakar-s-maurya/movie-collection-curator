@@ -5,6 +5,10 @@
     "rootDir": "./src",
     "outDir": "./dist",
 
+    // Referenced by apps/web, which types its oRPC client from `ApiRouter`, so
+    // its build and type-check rebuild this one rather than read a stale dist.
+    "composite": true,
+
     "module": "nodenext",
     "target": "esnext",
     "lib": ["esnext"],

@@ -1,4 +1,8 @@
 {
+  // Solution config: the real settings live in the two below. `paths` is
+  // duplicated from tsconfig.app.json because the shadcn CLI reads this file
+  // to work out where `@/components` goes.
+  "compilerOptions": { "paths": { "@/*": ["./src/*"] } },
   "files": [],
   "references": [
     { "path": "./tsconfig.app.json" },
