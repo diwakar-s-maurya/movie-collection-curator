@@ -5,16 +5,17 @@
   "type": "module",
   "scripts": {
     "postinstall": "prisma generate",
-    "dev": "pnpm db:deploy && tsx watch --env-file-if-exists=../../.env src/app.ts",
-    "build": "tsc",
+    "dev": "tsc -b && pnpm db:deploy && tsx watch --env-file-if-exists=../../.env src/app.ts",
+    "build": "tsc -b",
     "start": "node --env-file-if-exists=../../.env dist/app.js",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc -b",
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",
     "db:deploy:test": "prisma migrate deploy --config prisma.test.config.ts",
     "db:reset": "prisma migrate reset"
   },
   "dependencies": {
+    "@curator/tmdb": "workspace:*",
     "@prisma/adapter-pg": "^7.10.0",
     "@prisma/client": "^7.10.0",
     "express": "^5.2.1"

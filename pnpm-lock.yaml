@@ -130,6 +130,9 @@ importers:
 
   apps/api:
     dependencies:
+      '@curator/tmdb':
+        specifier: workspace:*
+        version: link:../../packages/tmdb
       '@prisma/adapter-pg':
         specifier: ^7.10.0
         version: 7.10.0

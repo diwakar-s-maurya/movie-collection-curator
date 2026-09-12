@@ -10,6 +10,10 @@
     "lib": ["esnext"],
     "types": ["node"],
 
+    // Referenced by apps/api, so its build and type-check rebuild this one on
+    // demand instead of reading a dist someone forgot to refresh.
+    "composite": true,
+
     "sourceMap": true,
     "declaration": true,
     "declarationMap": true
