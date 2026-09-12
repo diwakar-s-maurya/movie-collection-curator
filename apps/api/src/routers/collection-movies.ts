@@ -4,12 +4,38 @@ import { authed } from '../orpc.js'
 import {
   collectionMovie,
   collectionMovieInput,
+  collectionMoviePage,
+  collectionMoviesListInput,
+  updateAnnotationInput,
 } from '../schemas/collection-movies.js'
 import { ok } from '../schemas/common.js'
 import * as service from '../services/collection-movies.js'
 import { noSuchCollection } from './collections.js'
 
+/** One answer for a collection that is not the caller's and a movie that was
+ * never in it: as far as they are concerned, neither exists. */
+function noSuchMovie() {
+  return new ORPCError('NOT_FOUND', {
+    message: 'That movie is not in the collection.',
+  })
+}
+
 export const collectionMoviesRouter = {
+  list: authed
+    .route({
+      method: 'GET',
+      path: '/collections/{collectionId}/movies',
+      summary: "One page of a collection's movies, newest first",
+    })
+    .input(collectionMoviesListInput)
+    .output(collectionMoviePage)
+    .handler(async ({ input, context }) => {
+      const page = await service.listCollectionMovies(context.user.id, input)
+      if (!page) throw noSuchCollection()
+
+      return page
+    }),
+
   add: authed
     .route({
       method: 'POST',
@@ -37,13 +63,22 @@ export const collectionMoviesRouter = {
     .output(ok)
     .handler(async ({ input, context }) => {
       const removed = await service.removeMovie(context.user.id, input)
-      // One answer for a collection that is not the caller's and a movie that
-      // was never in it: neither exists as far as they are concerned.
-      if (!removed) {
-        throw new ORPCError('NOT_FOUND', {
-          message: 'That movie is not in the collection.',
-        })
-      }
+      if (!removed) throw noSuchMovie()
+
+      return { ok: true } as const
+    }),
+
+  updateAnnotation: authed
+    .route({
+      method: 'PATCH',
+      path: '/collections/{collectionId}/movies/{tmdbId}/annotation',
+      summary: 'Set the note, tags or rating on a movie in a collection',
+    })
+    .input(updateAnnotationInput)
+    .output(ok)
+    .handler(async ({ input, context }) => {
+      const updated = await service.updateAnnotation(context.user.id, input)
+      if (!updated) throw noSuchMovie()
 
       return { ok: true } as const
     }),

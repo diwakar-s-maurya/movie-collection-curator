@@ -1,5 +1,7 @@
 import { z } from 'zod'
 
+import { pageNumber, pageOf } from './common.js'
+
 /** TMDB's own ids: positive integers. */
 export const tmdbId = z.coerce.number().int().positive()
 
@@ -27,18 +29,12 @@ const QUERY_MIN_LENGTH = 2
 /** TMDB stops paging here, and asking for more is an upstream error. */
 const PAGE_MAX = 500
 
-/**
- * Coerced because this arrives as a query string: the SPA talks to the same
- * OpenAPI routes curl does, so `page=2` is the string `'2'` on the wire.
- */
-const page = z.coerce.number().int().min(1).max(PAGE_MAX).default(1)
-
 export const movieSearchInput = z.object({
   query: z
     .string()
     .trim()
     .min(QUERY_MIN_LENGTH, `Type at least ${QUERY_MIN_LENGTH} characters.`),
-  page,
+  page: pageNumber(PAGE_MAX),
   /** The collection the search dialog is open over. Optional: only
    * `inCollection` needs it. */
   collectionId: z.uuid().optional(),
@@ -57,9 +53,4 @@ export const movieSearchResult = z.object({
   inCollection: z.boolean(),
 })
 
-export const movieSearchPage = z.object({
-  page: z.number().int(),
-  totalPages: z.number().int(),
-  totalResults: z.number().int(),
-  results: z.array(movieSearchResult),
-})
+export const movieSearchPage = pageOf(movieSearchResult)

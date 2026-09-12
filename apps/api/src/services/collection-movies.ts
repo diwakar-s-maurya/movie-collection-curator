@@ -5,10 +5,14 @@ import { db, type Prisma } from '../db.js'
 import {
   type collectionMovie,
   type collectionMovieInput,
+  type collectionMoviePage,
+  type collectionMoviesListInput,
   genreList,
+  type updateAnnotationInput,
 } from '../schemas/collection-movies.js'
 
 export type CollectionMovie = z.infer<typeof collectionMovie>
+export type CollectionMoviePage = z.infer<typeof collectionMoviePage>
 
 /** Only the snapshot columns a view renders. */
 const movieSelect = {
@@ -132,6 +136,75 @@ export async function removeMovie(
 
   const { count } = await db.collectionMovie.deleteMany({
     where: { collectionId, tmdbId, collection: { userId } },
+  })
+
+  return count > 0
+}
+
+/**
+ * One page of a collection's movies, newest first. Null when the user has no
+ * collection with that id, so a stranger's id is a 404 rather than a list that
+ * happens to look empty.
+ *
+ * Ordering is `(added_at, id)`, the collection's index, so rows added in the
+ * same millisecond do not swap places between page loads.
+ */
+export async function listCollectionMovies(
+  userId: string,
+  input: z.infer<typeof collectionMoviesListInput>,
+): Promise<CollectionMoviePage | null> {
+  const { collectionId, page, pageSize } = input
+
+  const [owned, rows] = await Promise.all([
+    db.collection.findFirst({
+      where: { id: collectionId, userId },
+      select: { _count: { select: { movies: true } } },
+    }),
+    db.collectionMovie.findMany({
+      // Ownership is the `findFirst` above, which decides whether these rows
+      // are returned at all.
+      where: { collectionId },
+      orderBy: [{ addedAt: 'desc' }, { id: 'desc' }],
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+      select: collectionMovieSelect,
+    }),
+  ])
+  if (!owned) return null
+
+  const totalResults = owned._count.movies
+
+  return {
+    page,
+    totalPages: Math.ceil(totalResults / pageSize),
+    totalResults,
+    results: rows.map(toCollectionMovie),
+  }
+}
+
+/**
+ * Writes the fields the patch carries onto one membership row, and reports
+ * whether there was such a row. False when the movie is not in a collection
+ * of theirs, which covers a collection belonging to someone else, a film that
+ * was never added, and one removed in another tab.
+ *
+ * One statement, the same shape `removeMovie` uses: the ownership check rides
+ * in the `where` alongside the pairing, so there is no read to race with and
+ * someone else's collection simply matches nothing.
+ *
+ * Ownership rides in the `where`, as in `removeMovie`. Nothing is read back:
+ * the client already holds the row and normalises by the same rules.
+ */
+export async function updateAnnotation(
+  userId: string,
+  input: z.infer<typeof updateAnnotationInput>,
+): Promise<boolean> {
+  const { collectionId, tmdbId, ...annotation } = input
+
+  const { count } = await db.collectionMovie.updateMany({
+    where: { collectionId, tmdbId, collection: { userId } },
+    // Prisma leaves absent columns alone, so the patch needs no translation.
+    data: annotation,
   })
 
   return count > 0
