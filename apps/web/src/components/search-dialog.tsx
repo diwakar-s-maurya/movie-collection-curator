@@ -1,5 +1,5 @@
-import { useMutation, useQuery } from '@tanstack/react-query'
-import { Check, Plus } from 'lucide-react'
+import { keepPreviousData, useMutation, useQuery } from '@tanstack/react-query'
+import { Check, Loader2, Plus } from 'lucide-react'
 import { type ReactNode, useState } from 'react'
 import { toast } from 'sonner'
 
@@ -14,17 +14,16 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
-import { Skeleton } from '@/components/ui/skeleton'
 import { errorMessage } from '@/lib/error-message'
 import { releaseYear } from '@/lib/format'
 import { type MovieSearchResult, orpc } from '@/lib/orpc'
+import { useContentHeight } from '@/lib/use-content-height'
 import { useDebouncedValue } from '@/lib/use-debounced-value'
 
 // The API's own minimum, restated so the dialog can say so rather than send a
 // request it already knows will be rejected.
 const QUERY_MIN_LENGTH = 2
 const DEBOUNCE_MS = 300
-const SKELETON_ROWS = [0, 1, 2]
 
 type SearchDialogProps = {
   collectionId: string
@@ -59,8 +58,13 @@ const SearchDialog = ({
    * just-added row say "Added" without re-running the search.
    */
   const [added, setAdded] = useState<ReadonlySet<number>>(new Set())
+  const [bodyRef, bodyHeight] = useContentHeight<HTMLDivElement>()
 
+  // The field and the last request disagree for the length of the debounce,
+  // and most of what this dialog shows is a choice between the two.
+  const typed = term.trim()
   const query = debounced.trim()
+  const enoughTyped = typed.length >= QUERY_MIN_LENGTH
   const longEnough = query.length >= QUERY_MIN_LENGTH
 
   // The debounced term is the key, so one request fires per pause in the
@@ -69,12 +73,20 @@ const SearchDialog = ({
   //
   // `open` is in the condition because the dialog outlives its overlay while it
   // animates out, and an enabled query behind it is one TMDB request per focus.
+  //
+  // `placeholderData` keeps the previous term's hits on screen while the next
+  // request runs, so the list never empties and refills mid-typing.
   const results = useQuery(
     orpc.movies.search.queryOptions({
       input: { query, collectionId },
       enabled: open && longEnough,
+      placeholderData: keepPreviousData,
     }),
   )
+
+  // Counted from the keystroke, not the request: the debounce is part of the
+  // wait, and a spinner that blinks off for it reads as a finished search.
+  const searching = enoughTyped && (typed !== query || results.isFetching)
 
   const add = useMutation(
     orpc.collectionMovies.add.mutationOptions({
@@ -97,27 +109,19 @@ const SearchDialog = ({
 
   let body: ReactNode
 
-  if (!longEnough) {
+  // Against the field, not the query: leaving this up for the debounce that
+  // follows would argue with the spinner already turning.
+  if (!enoughTyped) {
     body = (
       <p className="text-sm text-muted-foreground">
         Type at least {QUERY_MIN_LENGTH} characters to search TMDB.
       </p>
     )
   } else if (results.isPending) {
-    body = (
-      <ul className="flex flex-col gap-4">
-        {SKELETON_ROWS.map((key) => (
-          <li key={key} className="flex gap-3">
-            <Skeleton className="aspect-2/3 w-14 shrink-0 rounded-md" />
-            <div className="flex flex-1 flex-col gap-2 py-1">
-              <Skeleton className="h-4 w-1/2" />
-              <Skeleton className="h-3 w-full" />
-              <Skeleton className="h-3 w-2/3" />
-            </div>
-          </li>
-        ))}
-      </ul>
-    )
+    // No skeleton: it promises a shape a search cannot know, and its three
+    // rows are themselves a resize. The spinner in the field is the report,
+    // and only the first search of a session gets here.
+    body = null
   } else if (results.isError) {
     // Worth retrying by hand rather than only on the next keystroke: TMDB was
     // unreachable a second ago and may not be now.
@@ -128,7 +132,9 @@ const SearchDialog = ({
       />
     )
   } else if (results.data.results.length === 0) {
-    body = (
+    // An empty list is a verdict, and a held-over one is the *last* term's:
+    // restating it under what is in the field now would claim we had looked.
+    body = results.isPlaceholderData ? null : (
       <p className="text-sm text-muted-foreground">
         No films match <span className="text-foreground">{query}</span>.
       </p>
@@ -162,17 +168,39 @@ const SearchDialog = ({
           </DialogDescription>
         </DialogHeader>
 
-        <Input
-          value={term}
-          onChange={(event) => setTerm(event.target.value)}
-          placeholder="Search TMDB…"
-          aria-label="Search films"
-          className="h-9"
-        />
+        {/* The spinner lives in the field: it answers the keystroke where the
+            typing is, and moves nothing. */}
+        <div className="relative">
+          <Input
+            value={term}
+            onChange={(event) => setTerm(event.target.value)}
+            placeholder="Search TMDB…"
+            aria-label="Search films"
+            className="h-9 pr-9"
+          />
+          {searching ? (
+            <Loader2 className="absolute top-1/2 right-3 size-4 -translate-y-1/2 animate-spin text-muted-foreground" />
+          ) : null}
+        </div>
 
         {/* Only the results scroll: the field stays put while they move under
-            it, so typing never chases the input up the screen. */}
-        <div className="min-h-0 flex-1 overflow-y-auto">{body}</div>
+            it, so typing never chases the input up the screen.
+
+            Height is measured from the results, so the dialog grows with them
+            instead of snapping; past 85vh the flex column caps this box and it
+            scrolls, as before. A phone dialog is already full height, so there
+            it just fills. */}
+        <div
+          aria-busy={searching}
+          style={{ height: bodyHeight }}
+          className="min-h-0 overflow-y-auto motion-safe:transition-[height] motion-safe:duration-200 max-sm:flex-1"
+        >
+          {/* One line's worth even when empty, so the box does not collapse
+              between the prompt and the first hits. */}
+          <div ref={bodyRef} className="min-h-5">
+            {body}
+          </div>
+        </div>
       </DialogContent>
     </Dialog>
   )
