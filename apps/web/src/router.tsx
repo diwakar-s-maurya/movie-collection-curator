@@ -12,6 +12,8 @@ import { AuthedLayout } from '@/components/layout/authed-layout'
 import { RootLayout } from '@/components/layout/root-layout'
 import { orpc } from '@/lib/orpc'
 import { queryClient } from '@/lib/query-client'
+import { pageSearchMiddleware, validatePageSearch } from '@/lib/search'
+import { CollectionDetail } from '@/routes/collection-detail'
 import { Collections } from '@/routes/collections'
 import { NotFound } from '@/routes/not-found'
 import { SignIn } from '@/routes/sign-in'
@@ -61,12 +63,24 @@ const authedRoute = createRoute({
 const collectionsRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: '/',
+  // Paged like the movie grid, since each card's numbers aggregate that
+  // collection's memberships.
+  validateSearch: validatePageSearch,
+  search: { middlewares: pageSearchMiddleware },
   component: Collections,
+})
+
+const collectionDetailRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: '/collections/$collectionId',
+  validateSearch: validatePageSearch,
+  search: { middlewares: pageSearchMiddleware },
+  component: CollectionDetail,
 })
 
 const routeTree = rootRoute.addChildren([
   signInRoute,
-  authedRoute.addChildren([collectionsRoute]),
+  authedRoute.addChildren([collectionsRoute, collectionDetailRoute]),
 ])
 
 export const router = createRouter({

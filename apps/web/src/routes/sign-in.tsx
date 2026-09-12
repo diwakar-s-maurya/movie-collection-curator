@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { type FormEvent, useState } from 'react'
 
+import { ErrorText } from '@/components/error-text'
 import { CenteredPanel } from '@/components/layout/centered-panel'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -52,11 +53,7 @@ const SignIn = () => {
         <Button type="submit" disabled={!trimmed || signIn.isPending}>
           {signIn.isPending ? 'Signing in…' : 'Continue'}
         </Button>
-        {signIn.error ? (
-          <p role="alert" className="text-sm text-destructive">
-            {signIn.error.message}
-          </p>
-        ) : null}
+        <ErrorText error={signIn.error} />
       </form>
     </CenteredPanel>
   )
