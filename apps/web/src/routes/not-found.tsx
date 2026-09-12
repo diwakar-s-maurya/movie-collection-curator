@@ -1,7 +1,7 @@
 import { Link } from '@tanstack/react-router'
 
 import { CenteredPanel } from '@/components/layout/centered-panel'
-import { Button } from '@/components/ui/button'
+import { buttonVariants } from '@/components/ui/button'
 
 /**
  * "What you asked for is not here, and here is the way out." Two things reach
@@ -23,7 +23,11 @@ const NotFoundPanel = ({
   <div className="flex w-full max-w-sm flex-col gap-3">
     <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
     <p className="text-sm text-muted-foreground">{description}</p>
-    <Button render={<Link to="/" />}>Back to collections</Button>
+    {/* Styled as a button, but a link: it navigates, so it has to keep an
+        anchor's semantics rather than take `role="button"`. */}
+    <Link to="/" className={buttonVariants()}>
+      Back to collections
+    </Link>
   </div>
 )
 
