@@ -3,13 +3,16 @@ import { db } from '../db.js'
 
 import type {
   collection,
+  collectionDetail,
   collectionPage,
   collectionsListInput,
   createCollectionInput,
 } from '../schemas/collections.js'
+import { statsFor, withSummaries } from './stats.js'
 
 export type Collection = z.infer<typeof collection>
 export type CollectionPage = z.infer<typeof collectionPage>
+export type CollectionDetail = z.infer<typeof collectionDetail>
 
 /** Kept beside the type so a new field is one edit, not one per query. */
 const collectionSelect = { id: true, name: true, description: true } as const
@@ -43,19 +46,27 @@ export async function listCollections(
     page,
     totalPages: Math.ceil(totalResults / pageSize),
     totalResults,
-    results: collections,
+    // Scoped above, so the stats module takes these rows as they are. Only
+    // this page is summarised, not the whole list.
+    results: await withSummaries(collections),
   }
 }
 
-/** The user's collection with this id, or null when they have no such row. */
-export function findCollection(
+/** The user's collection with this id and its stats, or null when they have
+ * no such row. */
+export async function findCollection(
   userId: string,
   id: string,
-): Promise<Collection | null> {
-  return db.collection.findFirst({
+): Promise<CollectionDetail | null> {
+  const found = await db.collection.findFirst({
     where: { id, userId },
     select: collectionSelect,
   })
+  if (!found) return null
+
+  // After the ownership check rather than beside it, so a stranger's id costs
+  // one indexed read and no aggregation.
+  return { ...found, stats: await statsFor(id) }
 }
 
 export function createCollection(
