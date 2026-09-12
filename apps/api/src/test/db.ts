@@ -13,3 +13,12 @@ export async function truncateAll(): Promise<void> {
     'TRUNCATE users, collections, movies, collection_movies CASCADE',
   )
 }
+
+/**
+ * A connection each for `count` callers, opened before a test races them.
+ * The pool hands out its first connections one at a time, which is enough to
+ * serialise the calls under test and hide the very race being asserted.
+ */
+export async function warmPool(count: number): Promise<void> {
+  await Promise.all(Array.from({ length: count }, () => db.$queryRaw`SELECT 1`))
+}
