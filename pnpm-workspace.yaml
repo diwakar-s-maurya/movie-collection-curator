@@ -1,0 +1,12 @@
+packages:
+  - apps/*
+  - packages/*
+
+# Versions every package shares. One place to bump the toolchain, and no way
+# for two packages to type-check against two different compilers.
+catalog:
+  '@types/node': ^26.4.0
+  typescript: ^7.0.2
+
+allowBuilds:
+  esbuild: true

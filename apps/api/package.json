@@ -1,0 +1,21 @@
+{
+  "name": "@curator/api",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch --env-file-if-exists=../../.env src/app.ts",
+    "build": "tsc",
+    "start": "node --env-file-if-exists=../../.env dist/app.js",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "express": "^5.2.1"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/node": "catalog:",
+    "tsx": "^4.23.12",
+    "typescript": "catalog:"
+  }
+}

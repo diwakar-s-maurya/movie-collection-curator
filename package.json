@@ -1,0 +1,21 @@
+{
+  "name": "movie-collection-curator",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.9"
+  },
+  "packageManager": "pnpm@12.3.4",
+  "scripts": {
+    "dev": "pnpm -r --parallel dev",
+    "build": "pnpm -r build",
+    "test": "pnpm -r test",
+    "typecheck": "pnpm -r typecheck",
+    "check": "biome check",
+    "check:fix": "biome check --write"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.5.13"
+  }
+}

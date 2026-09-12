@@ -1,0 +1,53 @@
+{
+  "$schema": "https://biomejs.dev/schemas/2.5.13/schema.json",
+  // .gitignore is the only ignore list: build output and node_modules are
+  // already in it, so they are not repeated here.
+  "vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
+  "files": {
+    "includes": [
+      "**",
+      // Vendored, not written here.
+      "!apps/web/src/components/ui",
+      // Static assets, not source.
+      "!apps/web/public",
+      // Prose. Reflowing tables and lists makes the diffs unreadable.
+      "!**/*.md",
+      // Generated. Biome has no YAML formatter today; this keeps the lockfile
+      // out of reach on the day it gets one.
+      "!pnpm-lock.yaml"
+    ]
+  },
+  // Everything not set here is Biome's default; only the deviations are listed.
+  "formatter": { "indentStyle": "space" },
+  "javascript": {
+    "formatter": {
+      "semicolons": "asNeeded",
+      "quoteStyle": "single",
+      "trailingCommas": "all"
+    }
+  },
+  "css": {
+    "formatter": { "quoteStyle": "single" },
+    "parser": { "tailwindDirectives": true }
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "preset": "recommended",
+      // Not in the recommended preset, but each one covers a failure this
+      // codebase is actually shaped to produce.
+      "style": {
+        // A module exporting a hook next to its component silently drops
+        // Fast Refresh to a full page reload, with nothing to notice but dev
+        // feeling slow.
+        "useComponentExportOnlyModules": "error"
+      },
+      "nursery": {
+        // The API is oRPC procedures over Prisma - almost every line is
+        // awaited. A dropped await swallows the error and returns early.
+        "noFloatingPromises": "error"
+      }
+    }
+  },
+  "assist": { "actions": { "source": { "organizeImports": "on" } } }
+}
