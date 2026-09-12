@@ -163,7 +163,7 @@ Already handled, so it is not on this list: movie lists are paginated, the list 
 
 ## 4. Notes
 
-**Time spent:** _to fill in_
+**Time spent:** ~5.5 hours, including planning.
 
 **AI tools:** claude-code
 
