@@ -1,20 +1,32 @@
-import { genreSchema } from '@curator/tmdb'
+import { genreSchema, posterUrl } from '@curator/tmdb'
 import { z } from 'zod'
 
+import { collectionId } from './collections.js'
 import { pageNumber, pageOf, pageSize } from './common.js'
-import { movieFields, tmdbId } from './movies.js'
+import { movieFields, POSTER_PATH_EXAMPLE, tmdbId } from './movies.js'
 
 const NOTE_MAX_LENGTH = 2000
 const TAGS_MAX = 20
 
+const NOTE_EXAMPLE = 'The bathhouse holds up on a fourth watch.'
+const TAGS_EXAMPLE = ['ghibli', 'comfort']
+const RATING_EXAMPLE = 5
+
 /** The shape of the `genres` jsonb column, and of the field on the wire: one
  * definition, checked once when the column is read and once on the way out. */
-export const genreList = z.array(genreSchema)
+export const genreList = z.array(genreSchema).meta({
+  examples: [
+    [
+      { id: 16, name: 'Animation' },
+      { id: 14, name: 'Fantasy' },
+    ],
+  ],
+})
 
 /** Identifies one movie's membership in one collection: the path of every
  * per-movie route, and the input of add and remove. */
 export const collectionMovieInput = z.object({
-  collectionId: z.uuid(),
+  collectionId,
   tmdbId,
 })
 
@@ -26,6 +38,7 @@ const note = z
   .max(NOTE_MAX_LENGTH, `Notes are at most ${NOTE_MAX_LENGTH} characters.`)
   .nullable()
   .transform((value) => value || null)
+  .meta({ examples: [NOTE_EXAMPLE] })
 
 /**
  * Free text, so the same tag has to arrive as the same string or the tag
@@ -41,6 +54,7 @@ const tags = z
     (values) => values.length <= TAGS_MAX,
     `A movie carries at most ${TAGS_MAX} tags.`,
   )
+  .meta({ examples: [TAGS_EXAMPLE] })
 
 /** 1-5 whole stars, or null for unrated. The column's CHECK says the same
  * thing; this says it before a round trip, with a message the sheet can show. */
@@ -50,6 +64,7 @@ const rating = z
   .min(1)
   .max(5)
   .nullable()
+  .meta({ examples: [RATING_EXAMPLE] })
 
 /**
  * A movie in a collection: the snapshot TMDB was asked for when it was added,
@@ -60,14 +75,32 @@ export const collectionMovie = z.object({
   ...movieFields,
   /** The sheet renders from the row the grid already cached, so its larger
    * poster rides along rather than costing a request of its own. */
-  posterUrlLarge: z.url().nullable(),
+  posterUrlLarge: z
+    .url()
+    .nullable()
+    .meta({
+      examples: [posterUrl(POSTER_PATH_EXAMPLE, 'w500')],
+    }),
   /** Minutes, null when TMDB has none — the runtime total skips those. */
-  runtime: z.number().int().nullable(),
+  runtime: z
+    .number()
+    .int()
+    .nullable()
+    .meta({ examples: [125] }),
   genres: genreList,
-  note: z.string().nullable(),
-  tags: z.array(z.string()),
+  note: z
+    .string()
+    .nullable()
+    .meta({ examples: [NOTE_EXAMPLE] }),
+  tags: z.array(z.string()).meta({ examples: [TAGS_EXAMPLE] }),
   /** 1-5, held to that range by the column's CHECK. Null until rated. */
-  rating: z.number().int().min(1).max(5).nullable(),
+  rating: z
+    .number()
+    .int()
+    .min(1)
+    .max(5)
+    .nullable()
+    .meta({ examples: [RATING_EXAMPLE] }),
 })
 
 /** One page of a collection. The cap on `pageSize` stops a hand-written
