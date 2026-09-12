@@ -1,7 +1,7 @@
 import type { TmdbClient } from '@curator/tmdb'
 import { OpenAPIHandler } from '@orpc/openapi/node'
 import { OpenAPIReferencePlugin } from '@orpc/openapi/plugins'
-import { RPCHandler } from '@orpc/server/node'
+import { BodyLimitPlugin, RPCHandler } from '@orpc/server/node'
 import {
   RequestHeadersPlugin,
   ResponseHeadersPlugin,
@@ -19,22 +19,25 @@ export const DOCS_PATH = '/docs'
 const DOCS_SCRIPT_URL = 'https://cdn.jsdelivr.net/npm/@scalar/api-reference'
 export const DOCS_CDN = new URL(DOCS_SCRIPT_URL).origin
 
+const MAX_BODY_BYTES = 64 * 1024
+
 /**
  * The session is a cookie, so procedures get the request's headers to read one
  * and a response `Headers` to set one, neither carrying Express's types. A
  * fresh pair per handler: a plugin instance registers itself on the handler it
  * is given.
  */
-const headerPlugins = () => [
+const commonPlugins = () => [
   new RequestHeadersPlugin(),
   new ResponseHeadersPlugin(),
+  new BodyLimitPlugin({ maxBodySize: MAX_BODY_BYTES }),
 ]
 
 /**
  * What the SPA talks to. The RPC protocol carries oRPC's own serialisation, so
  * the client is inferred straight from `ApiRouter` with no codegen step.
  */
-const rpcHandler = new RPCHandler(router, { plugins: headerPlugins() })
+const rpcHandler = new RPCHandler(router, { plugins: commonPlugins() })
 
 /**
  * The same procedures as plain HTTP routes, taking their method and path from
@@ -44,7 +47,7 @@ const rpcHandler = new RPCHandler(router, { plugins: headerPlugins() })
  */
 const openapiHandler = new OpenAPIHandler(router, {
   plugins: [
-    ...headerPlugins(),
+    ...commonPlugins(),
     new OpenAPIReferencePlugin({
       docsPath: DOCS_PATH,
       docsScriptUrl: DOCS_SCRIPT_URL,
