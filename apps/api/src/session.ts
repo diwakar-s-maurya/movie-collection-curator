@@ -12,15 +12,17 @@ const USER_COOKIE = 'curator_uid'
 const COOKIE_MAX_AGE_S = 30 * 24 * 60 * 60
 
 /**
- * Not `secure`, because the demo runs on http://localhost. The value is the
- * user id in the clear — unsigned and trivially forged (README decision 7).
- * Shared by the set and the clear, since a cookie is only deleted by a
- * `Set-Cookie` matching the one that created it.
+ * `secure` wherever the app is served over HTTPS — a deployed host — and off
+ * on http://localhost, which would otherwise refuse to store it at all. The
+ * value is the user id in the clear — unsigned and trivially forged (README
+ * decision 7). Shared by the set and the clear, since a cookie is only deleted
+ * by a `Set-Cookie` matching the one that created it.
  */
 const COOKIE_OPTIONS = {
   httpOnly: true,
   sameSite: 'lax',
   path: '/',
+  secure: process.env.COOKIE_SECURE === 'true',
 } as const satisfies SetCookieOptions
 
 export function setUserCookie(headers: Headers | undefined, id: string): void {
