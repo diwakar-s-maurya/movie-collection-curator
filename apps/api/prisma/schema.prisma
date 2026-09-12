@@ -1,0 +1,100 @@
+// Four tables: users, collections, the TMDB snapshot cache, and the membership
+// row that carries the annotation. Nothing derived is stored — every stat the
+// app shows is computed on read (see src/services/stats.ts).
+//
+// Primary keys come from the column's own DEFAULT uuidv7() (Postgres 18+),
+// not from a client-side default; IMPLEMENTATION.md says why.
+//
+// Columns and tables are snake_case in Postgres and camelCase in the client,
+// so the raw stats SQL and Prisma agree on names without a translation layer
+// in the reader's head.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  // The URL lives in prisma.config.ts; Prisma 7 no longer reads it from here.
+}
+
+model User {
+  id   String @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  /// Trimmed and lowercased by the auth service before lookup and insert, so
+  /// this plain unique index is what makes names case-insensitive.
+  name String @unique
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  collections Collection[]
+
+  @@map("users")
+}
+
+model Collection {
+  id          String  @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  userId      String  @map("user_id") @db.Uuid
+  name        String
+  description String?
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  user   User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  movies CollectionMovie[]
+
+  // The list view is one user's collections, newest first.
+  @@index([userId, createdAt])
+  @@map("collections")
+}
+
+/// A snapshot of what TMDB said when a movie was first added, not a mirror of
+/// TMDB: rows are written once and shared by every collection that holds the
+/// movie, and deleting a collection leaves them in place.
+model Movie {
+  tmdbId      Int       @id @map("tmdb_id")
+  title       String
+  overview    String
+  posterPath  String?   @map("poster_path")
+  releaseDate DateTime? @map("release_date") @db.Date
+  /// Minutes. Null when TMDB has no runtime, which the stats sums skip.
+  runtime     Int?
+  /// `[{ id, name }]`, parsed with a Zod schema on read.
+  genres      Json
+  /// TMDB's own 0–10 score, shown next to the user's rating.
+  voteAverage Float     @map("tmdb_vote_average")
+
+  fetchedAt DateTime @default(now()) @map("fetched_at") @db.Timestamptz(3)
+
+  memberships CollectionMovie[]
+
+  @@map("movies")
+}
+
+/// A movie's membership in one collection, plus the annotation that belongs to
+/// that pairing — the same film can carry a different note in another list.
+model CollectionMovie {
+  id           String @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  collectionId String @map("collection_id") @db.Uuid
+  tmdbId       Int    @map("tmdb_id")
+
+  note String?
+  /// Trimmed, de-duplicated and capped by the annotation schema before it
+  /// reaches here.
+  tags String[] @default([])
+  /// 1–5. The range is a CHECK constraint added by hand to the initial
+  /// migration, since Prisma's schema cannot express one.
+  rating Int? @db.SmallInt
+
+  addedAt DateTime @default(now()) @map("added_at") @db.Timestamptz(3)
+
+  collection Collection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  movie      Movie      @relation(fields: [tmdbId], references: [tmdbId])
+
+  // Adding a movie twice is the same row, so the pairing is unique.
+  @@unique([collectionId, tmdbId])
+  // The grid is one collection's movies, newest first; id breaks ties so
+  // paging is stable when two rows share a timestamp.
+  @@index([collectionId, addedAt, id])
+  @@map("collection_movies")
+}
