@@ -11,6 +11,14 @@ import type { RequestHandler } from 'express'
 
 import { router } from './routers/index.js'
 
+/** The one HTML route the API has, and so the one its CSP has to allow. */
+export const DOCS_PATH = '/docs'
+
+/** Pinned rather than left to the plugin's default, so the origin the CSP
+ * allows cannot drift from the one `/docs` actually loads. */
+const DOCS_SCRIPT_URL = 'https://cdn.jsdelivr.net/npm/@scalar/api-reference'
+export const DOCS_CDN = new URL(DOCS_SCRIPT_URL).origin
+
 /**
  * The session is a cookie, so procedures get the request's headers to read one
  * and a response `Headers` to set one, neither carrying Express's types. A
@@ -38,7 +46,8 @@ const openapiHandler = new OpenAPIHandler(router, {
   plugins: [
     ...headerPlugins(),
     new OpenAPIReferencePlugin({
-      docsPath: '/docs',
+      docsPath: DOCS_PATH,
+      docsScriptUrl: DOCS_SCRIPT_URL,
       schemaConverters: [new ZodToJsonSchemaConverter()],
       specGenerateOptions: {
         info: { title: 'Movie Collection Curator', version: '0.0.0' },
