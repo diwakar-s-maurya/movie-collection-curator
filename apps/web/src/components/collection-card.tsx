@@ -10,7 +10,7 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
-import { formatRuntime } from '@/lib/format'
+import { factLine, formatRuntime } from '@/lib/format'
 import type { CollectionSummary } from '@/lib/orpc'
 
 type CollectionCardProps = {
@@ -35,16 +35,16 @@ const CollectionCard = ({
 
   // An empty collection still says "0 films"; the rest is left out rather than
   // printed as a zero, which would read as a fact about the films.
-  const facts = [
+  const facts = factLine(
     `${movieCount} ${movieCount === 1 ? 'film' : 'films'}`,
     formatRuntime(runtimeMinutes),
     averageRating === null
       ? null
       : `${averageRating.toFixed(1)} avg (${ratedCount} rated)`,
-  ].filter((fact) => fact !== null)
+  )
 
   return (
-    <Card className="relative transition-colors hover:bg-muted/40">
+    <Card className="group relative transition-colors hover:bg-muted/40">
       <CardHeader>
         <CardTitle>
           {/* The link covers the card, so the whole thing is the target and
@@ -75,9 +75,7 @@ const CollectionCard = ({
           />
         </CardAction>
       </CardHeader>
-      <CardContent className="text-muted-foreground">
-        {facts.join(' · ')}
-      </CardContent>
+      <CardContent className="text-muted-foreground">{facts}</CardContent>
     </Card>
   )
 }

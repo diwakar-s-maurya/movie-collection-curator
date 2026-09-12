@@ -10,6 +10,7 @@ import { Plus } from 'lucide-react'
 import { type ReactNode, useState } from 'react'
 import { toast } from 'sonner'
 
+import { AnnotationDialog } from '@/components/annotation-dialog'
 import { ConfirmDialog } from '@/components/confirm-dialog'
 import { ErrorText } from '@/components/error-text'
 import { MovieCard } from '@/components/movie-card'
@@ -17,10 +18,12 @@ import { PageHeading } from '@/components/page-heading'
 import { Pagination } from '@/components/pagination'
 import { RetryableError } from '@/components/retryable-error'
 import { SearchDialog } from '@/components/search-dialog'
+import { StatsStrip } from '@/components/stats-strip'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { type CollectionMovie, orpc } from '@/lib/orpc'
 import { pageAfterRemoval } from '@/lib/search'
+import { useUpdateAnnotation } from '@/lib/use-update-annotation'
 import { NotFoundPanel } from '@/routes/not-found'
 
 const ROUTE = '/_authed/collections/$collectionId'
@@ -30,8 +33,8 @@ const GRID = 'grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4'
 
 /**
  * The workbench: everything about one collection on one screen. Search is a
- * dialog over this view and the annotation editor a sheet beside it, so the
- * only navigation in the app is list → collection → back.
+ * dialog over this view and the annotation editor another, so the only
+ * navigation in the app is list → collection → back.
  */
 const CollectionDetail = () => {
   const { collectionId } = useParams({ from: ROUTE })
@@ -39,6 +42,7 @@ const CollectionDetail = () => {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [searchOpen, setSearchOpen] = useState(false)
+  const [selectedTmdbId, setSelectedTmdbId] = useState<number | null>(null)
   const [pendingRemove, setPendingRemove] = useState<CollectionMovie | null>(
     null,
   )
@@ -56,6 +60,20 @@ const CollectionDetail = () => {
       placeholderData: keepPreviousData,
     }),
   )
+
+  // One hook for both writes to an annotation: the stars on the cards below
+  // and the dialog over them.
+  const update = useUpdateAnnotation(collectionId)
+
+  // The film the editor is open on, read back out of the page the grid is
+  // showing rather than copied into state on click, so an optimistic patch
+  // reaches the editor and the card underneath it together.
+  const selectedMovie =
+    selectedTmdbId === null
+      ? null
+      : (movies.data?.results.find(
+          (movie) => movie.tmdbId === selectedTmdbId,
+        ) ?? null)
 
   const goToPage = (next: number) =>
     void navigate({
@@ -94,6 +112,9 @@ const CollectionDetail = () => {
     orpc.collectionMovies.remove.mutationOptions({
       onSuccess: () => {
         setPendingRemove(null)
+        // The film the editor was open on is gone, so the panel has nothing
+        // left to say.
+        setSelectedTmdbId(null)
         settleMembership(pageAfterRemoval(movies.data?.results.length, page))
       },
       // The dialog stays open on failure: the card is still in the grid, and
@@ -158,6 +179,10 @@ const CollectionDetail = () => {
             <MovieCard
               key={movie.tmdbId}
               movie={movie}
+              onOpen={() => setSelectedTmdbId(movie.tmdbId)}
+              onRate={(rating) =>
+                update.mutate({ tmdbId: movie.tmdbId, rating })
+              }
               onRemove={() => setPendingRemove(movie)}
             />
           ))}
@@ -197,7 +222,23 @@ const CollectionDetail = () => {
           a separate query and still worth showing. */}
       {collection.isError ? <ErrorText error={collection.error} /> : null}
 
+      {collection.isPending ? (
+        <Skeleton className="h-36 rounded-xl" />
+      ) : collection.data ? (
+        <StatsStrip stats={collection.data.stats} />
+      ) : null}
+
       {grid}
+
+      {/* Its film is read out of the page the grid is already showing, so
+          opening it costs nothing. */}
+      <AnnotationDialog
+        collectionId={collectionId}
+        movie={selectedMovie}
+        onClose={() => setSelectedTmdbId(null)}
+        // The same confirm the card's remove button raises.
+        onRemove={() => setPendingRemove(selectedMovie)}
+      />
 
       {collection.data ? (
         <SearchDialog

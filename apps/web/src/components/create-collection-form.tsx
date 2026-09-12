@@ -76,7 +76,7 @@ const CreateCollectionForm = ({
 
   return (
     <Card
-      // Esc leaves the composer, as it leaves the dialog and the sheet.
+      // Esc leaves the composer, as it leaves every dialog in the app.
       onKeyDown={(event: KeyboardEvent) => {
         if (event.key === 'Escape') onCancel?.()
       }}

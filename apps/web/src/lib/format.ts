@@ -13,6 +13,12 @@ export function formatRuntime(minutes: number): string | null {
   return rest === 0 ? `${hours}h` : `${hours}h ${rest}m`
 }
 
+/** A row of small facts with the empty ones dropped. The separator is a
+ * decision about the app (UI_design 3), not each caller's to make. */
+export function factLine(...facts: (string | null)[]): string {
+  return facts.filter((fact) => fact !== null).join(' · ')
+}
+
 /** The year a film came out, from TMDB's ISO date. Null when TMDB has no date,
  * so a card prints nothing rather than a guess. */
 export function releaseYear(releaseDate: string | null): string | null {
