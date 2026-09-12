@@ -1,0 +1,219 @@
+# Implementation notes
+
+Working notes for building the app: the detail needed while coding that a reader of the readme does not need. [README.md](README.md) holds the decisions and why they were made; [PLAN.md](PLAN.md) holds the build order; [UI_design.md](UI_design.md) holds what each screen should feel like to use. Nothing here changes a decision in any of them.
+
+## Data model
+
+```
+users              id uuid pk, name text unique (stored trimmed and lowercased), created_at
+collections        id uuid pk, user_id fk, name text, description text null, created_at
+movies             tmdb_id int pk, title, overview, poster_path null, release_date date null,
+                   runtime int null, genres jsonb [{id,name}], tmdb_vote_average numeric, fetched_at
+collection_movies  id uuid pk, collection_id fk (cascade), tmdb_id fk movies,
+                   note text null, tags text[] default '{}', rating smallint null check 1..5,
+                   added_at, unique(collection_id, tmdb_id)
+```
+
+Deleting a collection cascades to its memberships; `movies` rows are left in place (they are a cache). No stats are stored; everything derived is computed on read — README decision 5.
+
+- Indexes: `collections(user_id, created_at)`, `collection_movies(collection_id, added_at, id)`.
+- The rating check constraint (1..5) cannot be declared in the Prisma schema. Generate the migration with `prisma migrate dev --create-only`, add `CHECK (rating BETWEEN 1 AND 5)` to the SQL by hand, then apply.
+- `users.name` is a plain Prisma `@unique`. The auth service trims and lowercases the name before both lookup and insert, so uniqueness is case-insensitive without an expression index that Prisma cannot see or use. The header shows the normalised name; a separate display-name column is not worth it for a name-only sign-in.
+- `genres` is a `Json` column; the service parses it with a Zod schema on read (`{ id: number, name: string }[]`).
+
+## Stats module (`apps/api/src/services/stats.ts`)
+
+Three raw queries via `prisma.$queryRaw`, each with a Zod schema for the row shape. These are the only hand-written SQL in the app besides the one line added to the initial migration (the rating `CHECK`, above).
+
+```sql
+-- summary: one row per collection id; used by collections.get (one id) and collections.list (all ids on the page)
+SELECT cm.collection_id,
+       count(*)::int                                   AS movie_count,
+       coalesce(sum(m.runtime), 0)::int                AS runtime_minutes,
+       count(cm.rating)::int                           AS rated_count,
+       avg(cm.rating)::float                           AS average_rating,   -- null when nothing rated
+       min(extract(year FROM m.release_date))::int     AS year_min,         -- null when no dates
+       max(extract(year FROM m.release_date))::int     AS year_max
+FROM collection_movies cm JOIN movies m ON m.tmdb_id = cm.tmdb_id
+WHERE cm.collection_id = ANY($1)
+GROUP BY cm.collection_id;
+
+-- genres: top 5 by count
+SELECT g->>'name' AS name, count(*)::int AS count
+FROM collection_movies cm JOIN movies m ON m.tmdb_id = cm.tmdb_id,
+     jsonb_array_elements(m.genres) g
+WHERE cm.collection_id = $1
+GROUP BY 1 ORDER BY 2 DESC, 1 LIMIT 5;
+
+-- tags: top 5 by count
+SELECT t AS name, count(*)::int AS count
+FROM collection_movies cm, unnest(cm.tags) t
+WHERE cm.collection_id = $1
+GROUP BY 1 ORDER BY 2 DESC, 1 LIMIT 5;
+```
+
+Collections with no movies get no summary row, so the service fills in zeros and nulls. `collections.list` calls the summary once with the ids on the page and joins the rows back in memory, so the list view is three queries — the count, the page, and the summary — rather than one per card. It pages for the same reason the grid does: each card's summary aggregates that collection's membership rows, so an unbounded list would make the cheapest-looking view the most expensive one. Ties in the breakdowns are broken by name so the order is stable across reloads.
+
+## TMDB library (`packages/tmdb`)
+
+- `createTmdbClient({ accessToken, baseUrl?, fetch?, language?, timeoutMs? })` returning `{ searchMovies(query, {page}), getMovie(id), verifyAccessToken() }`.
+- Every request carries an `AbortSignal.timeout` (default 5s) that stays live while the body streams, so a stalled TMDB connection cannot pin an API request open. A timeout is an `UPSTREAM` error whose message names the deadline — not its own code, because the API maps it to `BAD_GATEWAY` like every other upstream failure. The library never reads `process.env`; `apps/api/src/tmdb.ts` is what turns `TMDB_ACCESS_TOKEN` and `TMDB_TIMEOUT_MS` (defaulted in code, the shape `PORT` and `SHUTDOWN_TIMEOUT_MS` already use) into a client. Cancelling a call the caller no longer wants is future work (README).
+- `verifyAccessToken()` exists for a caller that wants to find out at boot rather than on a user's first search. It rejects with the same codes as every other call, so the API can tell a wrong token (`UNAUTHORIZED`, our config broken and worth shouting about) from TMDB being unreachable (`UPSTREAM`, worth a warning and nothing more). Nothing in a request path calls it: `app.ts` fires it once from the listen callback and does not await it, so the answer is a log line rather than a condition for serving.
+- Internal `request<T>(path, params, schema)` handles auth (v4 Bearer token), query encoding, JSON parsing, Zod validation of the body against `schema`, and maps failures to a `TmdbError` with `status` and `code` (`NOT_FOUND`, `RATE_LIMITED`, `UNAUTHORIZED`, `INVALID_RESPONSE`, `UPSTREAM`).
+- Two layers per endpoint: an internal Zod schema for TMDB's raw shape, then a mapping function to the library's own DTO. Callers only ever see the DTO, so they do not depend on TMDB field names. `posterUrl(path, size)` helper with the standard image base.
+- The raw schemas are lenient on purpose: no `.strict()`, so a new TMDB field never breaks the client. TMDB quirks encoded in the schema rather than in callers: `release_date` is sometimes an empty string (transform to `null`); `runtime` can be `0` or `null` (treat `0` as `null`); `poster_path` and `overview` are nullable.
+- Tests inject a fake `fetch` and assert the error mapping below (happy path, 404 -> `NOT_FOUND`, 429 -> `RATE_LIMITED`, malformed JSON -> `UPSTREAM`, a timeout at the fetch and mid-body -> `UPSTREAM` naming the deadline, a 200 whose body is missing `results` -> `INVALID_RESPONSE`) and the request shape (auth header present, `query` URL-encoded, `include_adult=false`, deadline attached). One of the three suites in the README.
+
+### TMDB endpoints used
+
+Base `https://api.themoviedb.org/3`. Two endpoints cover every feature in the app, plus one the app itself never needs; all read-only GETs.
+
+| Need | Endpoint | Params sent | Fields consumed |
+|---|---|---|---|
+| `movies.search` | `GET /search/movie` | `query`, `page`, `include_adult=false`, `language` (default `en-US`) | `page`, `total_pages`, `total_results`; per result `id`, `title`, `overview`, `poster_path`, `release_date`, `vote_average` |
+| snapshot on `collectionMovies.add` (decision 2) | `GET /movie/{movie_id}` | `language` | `id`, `title`, `overview`, `poster_path`, `release_date`, `runtime`, `genres` (`[{id,name}]`), `vote_average` |
+| boot-time token check (`verifyAccessToken`) | `GET /authentication` | `language` | none: `success` is validated and dropped |
+
+Search results carry `genre_ids` (ints, no names) and no `runtime`, which is why add has to call details anyway — the sub-point of decision 2. Every other field TMDB returns (`adult`, `video`, `popularity`, `backdrop_path`, `original_*`, `budget`, `revenue`, `imdb_id`, `belongs_to_collection`, `production_*`, `spoken_languages`) is dropped at the DTO boundary rather than stored, so the `movies` table only holds what a view actually renders.
+
+Auth: `Authorization: Bearer ${TMDB_ACCESS_TOKEN}` (v4 read access token) on every request. The v3 `api_key` query param is not supported: one auth path, one thing to test. Beyond that token check, no other TMDB auth flow is touched — no request token, no session id, no account endpoints, since nothing here acts on behalf of a TMDB user.
+
+Images are not an API call: `https://image.tmdb.org/t/p/{size}{poster_path}`, `w342` for grid and search cards, `w500` in the annotation dialog (decision 8).
+
+Error mapping. TMDB sends `{ status_code, status_message }` in the body alongside the HTTP status; the client reads the HTTP status and keeps `status_message` for logs.
+
+| TMDB response | `TmdbError.code` | Surfaced by the API as |
+|---|---|---|
+| 401 (`status_code` 7 invalid key, 3 auth failed, 10 suspended) | `UNAUTHORIZED` | `BAD_GATEWAY`, logged loudly — this is our config broken, not the user's request |
+| 404 (`status_code` 34, 6) | `NOT_FOUND` | `NOT_FOUND` on add (unknown `tmdbId`) |
+| 429 | `RATE_LIMITED` | `BAD_GATEWAY` with a "try again" toast; no retry in the client |
+| 2xx whose body fails the Zod schema | `INVALID_RESPONSE` | `BAD_GATEWAY`, logged with the Zod issues — TMDB changed shape, which is a different problem from TMDB being down |
+| other non-2xx, network error, malformed JSON, timeout | `UPSTREAM` | `BAD_GATEWAY` |
+
+TMDB's limit is "somewhere in the 40 requests per second range" (the old 40-per-10s window was retired in 2019) on a shared key, so a demo will not reach it; the search input's debounce plus TanStack Query's key cache is the real mitigation today (README decision 6), a server-side cache is the 100x answer.
+
+Not used, on purpose:
+- `GET /configuration` (image base url and the size list). Hardcoded instead, one fewer request and no boot-time dependency; revisit only if TMDB moves the CDN.
+- `GET /genre/movie/list` (maps search `genre_ids` to names). Search cards show no genres, and added movies get names from the details call, so it buys nothing today. First endpoint to add if that changes.
+- `append_to_response` on `/movie/{id}` (credits, videos, images, similar in one round trip). No view needs them yet.
+- `/search/multi`, `/discover/movie`, `/trending/*`. Future features.
+
+The requirement says to assume the library grows: `request<T>(path, params)` carries auth, encoding, parsing and error mapping, so each of the above is a DTO plus a few lines.
+
+## API (`apps/api`, oRPC)
+
+Router, grouped by resource. Each procedure has a Zod input and output schema; the OpenAPI handler maps them to routes.
+
+```
+auth
+  signIn      (name) -> User, sets cookie     POST /auth/sign-in
+  signOut     clears cookie                   POST /auth/sign-out
+  me          -> User                         GET  /auth/me
+collections
+  list        (page = 1, pageSize = 24) -> Page<CollectionSummary>
+                                              GET  /collections?page=&pageSize=
+  get         -> CollectionDetail             GET  /collections/{id}          (summary + breakdown stats, no movies)
+  create      (name, description?)            POST /collections
+  delete      (id)                            DELETE /collections/{id}
+collectionMovies
+  list        (collectionId, page = 1, pageSize = 24) -> Page<CollectionMovie>
+                                              GET    /collections/{id}/movies?page=&pageSize=
+  add         (collectionId, tmdbId)          POST   /collections/{id}/movies
+  remove      (collectionId, tmdbId)          DELETE /collections/{id}/movies/{tmdbId}
+  updateAnnotation (collectionId, tmdbId, { note?, tags?, rating? }) -> CollectionMovie
+                                              PATCH  /collections/{id}/movies/{tmdbId}/annotation
+movies
+  search      (query, page = 1, collectionId?) GET  /movies/search?query=&page=&collectionId=
+```
+
+`movies.search` takes an optional `collectionId`. When present, the service runs one Prisma `findMany` on `collection_movies` for that collection with `tmdbId IN` the page of result ids, and sets `inCollection: boolean` on each result. The search dialog always passes the open collection's id, which is how it renders "Added" instead of an add button. The client cannot work this out itself: the grid is paginated, so it only ever holds one page of the collection's ids.
+
+Validation: rating integer 1..5 or null (Zod plus DB check); note max 2000 chars; tags trimmed, de-duplicated, empty strings dropped, max 20; search query min 2 chars; `pageSize` default 24, max 100, shared by both paginated lists so neither can be asked for everything at once. `updateAnnotation` takes a partial: every field optional, an omitted field is left unchanged, `note: null` and `rating: null` clear, `tags` replaces the whole array, and a body with no fields is `BAD_REQUEST`. Adding a movie already in the collection returns the existing row. Errors are thrown as `ORPCError` with codes `UNAUTHORIZED`, `NOT_FOUND`, `BAD_REQUEST`, `BAD_GATEWAY` (TMDB failure), which the OpenAPI handler maps to HTTP statuses. There is no `FORBIDDEN`: a collection that exists but belongs to another user is `NOT_FOUND`, so the API does not confirm that someone else's ids exist.
+
+### Boot checks
+
+Config the process can check by itself is fatal, config that needs the network is not. A missing `DATABASE_URL` or `TMDB_ACCESS_TOKEN` throws before `listen`, naming the variable and `.env.example`, because both are one line to fix and the app cannot do its job without either. A token TMDB rejects is an error in the log and nothing more, and TMDB being unreachable is only a warning: finding out costs a request, and a demo that will not start because TMDB is down or rate-limiting is worse than one whose search fails with a clear reason.
+
+### Tests (three suites, matching the README)
+
+- `packages/tmdb`: error mapping, response validation and request shape, fake `fetch`, no network.
+- `apps/api` schemas: the inputs whose rules the services no longer re-check, since the procedure is the only thing that parses them — the annotation patch normalises tags (trim, de-dupe, drop empties, cap at 20) and rejects ratings 0, 6 and 3.5; the collection input trims the name, rejects a blank one and stores a blank description as null. Pure, no DB.
+- `apps/api` services: runs against `TEST_DATABASE_URL` (the second database in the compose file), truncates all tables in `beforeEach`. Never `DATABASE_URL`, so `pnpm test` cannot wipe demo data. Per-user scoping: user A calling get, delete, add, remove and updateAnnotation on user B's collection gets `NOT_FOUND`. Stats: insert fixture movies straight into `movies` (no TMDB call) and memberships with known runtimes, dates, genres, ratings and tags; assert the summary, genre and tag rows exactly. Cases: empty collection (zeros, nulls, empty breakdowns), nothing rated (average null), a movie with null runtime and null release date (excluded from sum and span, still counted), and a tie in the genre counts (ordered by name).
+
+## Posters
+
+- The library builds `posterUrl` from `poster_path` and the standard `image.tmdb.org/t/p/{size}` base; the API returns the full URL and the SPA puts it straight in an `<img>`.
+- Stored `poster_path` is size-agnostic, so sizes can change or move to another CDN later without a migration.
+- A footer on every view, sign-in included, carries TMDB's required line verbatim — "This product uses the TMDB API but is not endorsed or certified by TMDB" — with the name linked to themoviedb.org. Their logo mark is deliberately not drawn: it is a trademark with a branding guide, and an approximation of it would be worse than the sentence they actually specify.
+
+## Annotation writes
+
+One procedure, `collectionMovies.updateAnnotation`, takes a partial of `{ note, tags, rating }` and returns the updated `CollectionMovie` row. Rating is a one-click interaction from the card and note plus tags are saved together from the annotation dialog, but they are the same row and the same write, so they share one procedure and one mutation hook (`useUpdateAnnotation(collectionId)`) on the client. The hook patches the row optimistically with `queryClient.setQueriesData` on the partial key for that collection's `collectionMovies.list`, so every cached page is updated without knowing which page holds the row (rolls back on error), replaces it with the server's row on success, and invalidates `collections.get` (summary and breakdowns changed) and `collections.list` (list cards show the average). Nothing refetches the movie page for a one-field change. Gives up: a PATCH whose meaning depends on which keys are present, and a little cache-patching code that deserves a comment.
+
+## Web app (`apps/web`)
+
+TanStack Router, code-based routes in `src/router.tsx` (three routes do not need the file-based plugin and its generated route tree), on browser history ("Routing and state" below). Route components live in `src/routes/`:
+- `/` Collections: list cards showing movie count, total runtime and average rating (from the grouped summary query on `collections.list`), inline create form, delete with confirm.
+- `/collections/$collectionId` Collection detail: stats strip at top (summary and breakdowns from `collections.get`, no extra request); paginated movie grid (24 per page, page number in the route's search params via `validateSearch`, `placeholderData: keepPreviousData` so the grid does not flash between pages); each card shows poster, title, year, a clickable star rating (writes through `updateAnnotation` immediately) and tag chips; click a card to open the annotation dialog (note + tags, save, and remove); remove from either the card's icon button or the dialog's footer, both raising the same confirm and both ending in the route, which owns the mutation and the paging that follows it.
+- Search lives inside the detail view as a dialog. The input value goes through a small `useDebouncedValue(value, 300)` hook (own code, no scheduling library) and the debounced value is the query key, so one request fires 300 ms after the last keystroke. TanStack Query caches by key, so backspacing or retyping a term hits the cache and an identical in-flight term is shared. Minimum two characters. The query passes the open collection's id so results already in it come back with `inCollection` and render "Added". Keeps the "add to the open collection" flow one step.
+- `/sign-in`: name field, sign-in button, hint text "No password. Pick any name. Use a second browser to try another user." Existing name signs in, new name creates the user, then `navigate({ to: '/' })`.
+- Header: app name, "Collections" link back to the list on every view, current user name and a sign-out button (clears the cookie, clears the TanStack Query cache, navigates to `/sign-in`).
+- A route that fails outright renders `RouteError` (`defaultErrorComponent`): the guard rethrows anything that is not `UNAUTHORIZED`, and "Try again" both resets the boundary and calls `router.invalidate()`, since resetting alone re-renders the same failure. A failed *list* read never reaches it — those are shown in place with a retry, because the rest of the page is still worth having.
+- One helper owns what a failure says (`src/lib/error-message.ts`), and `ErrorText` and every toast go through it. The API's own messages are already sentences about what happened and pass through unchanged; the two that are not get replaced — a transport failure (`fetch` rejects with a `TypeError`: no API, or offline) and the status phrase oRPC fills in when no message came back (`Internal Server Error`), which is what an unhandled server-side throw is sanitised to.
+- API transport: the oRPC client points at `/api`, and `vite.config.ts` proxies `/api` to `http://localhost:3000` with the prefix stripped. The browser only ever talks to `localhost:5173`, so the auth cookie is same-origin and the API needs no CORS or `Access-Control-Allow-Credentials` setup. The API itself still listens on 3000 for curl and the OpenAPI docs.
+
+### Routing and state
+
+The router owns location; the rule for everything else is transient UI state in the component that owns the panel, server state in TanStack Query.
+
+```ts
+// apps/web/src/router.tsx
+const router = createRouter({
+  routeTree,
+  history: createBrowserHistory(),
+  context: { queryClient },
+});
+```
+
+Route tree, code-based:
+
+```
+rootRoute                          header + <Outlet/>, gets queryClient from router context
+  /sign-in                         SignIn
+  _authed (pathless layout)        beforeLoad: auth.me via queryClient.ensureQueryData;
+                                   on UNAUTHORIZED throw redirect({ to: '/sign-in' });
+                                   returns { user } into route context
+    /                              Collections
+    /collections/$collectionId     CollectionDetail, validateSearch: { page: number = 1 }
+```
+
+- **Location.** Browser history. The router owns the URL and has typed `params` (`collectionId`) and `search` (`page`), `Link`, `useNavigate` and `redirect`. Routes never hold "where am I" in state. Vite's dev server already falls back to `index.html` for unknown paths, so a refresh on `/collections/abc` lands on the detail view.
+- **Signed in or not.** The `_authed` layout's `beforeLoad` is the single guard. It calls `auth.me` through the query client, so the result is cached and the header reads the same row via `useRouteContext`. Sign-in success invalidates `auth.me` and navigates to `/`. Sign-out clears the cookie, clears the whole query cache and navigates to `/sign-in`, so the next user in the same tab never lands on the previous user's collection.
+- **Transient UI state.** Local to the component that owns the panel. `CollectionDetail`: `searchOpen`, `selectedTmdbId` (annotation dialog, `null` when closed), `pendingRemove` (confirm dialog). `SearchDialog`: the raw input value and its debounced copy. `Collections`: create-form fields and `pendingDelete`. Page number is the one piece of UI state in the router, as a search param, because it is part of "where am I" and should survive a refresh.
+- **Server state.** TanStack Query only. Nothing is copied into component state; the annotation dialog reads its movie from the cached page by `selectedTmdbId`. Its note and tags are the one exception and have to be: a draft is by definition not yet the server's, and it is seeded from the cached row and compared back against it to know whether there is anything to save.
+
+A refresh keeps the view (the guard sends a signed-out user to `/sign-in` from wherever they were), a collection URL can be shared, and the back button works. If the open collection disappears (deleted on another device, or a stale link), `collections.get` returns `NOT_FOUND` and the detail route renders a not-found panel with a link back to the list rather than crashing.
+
+Navigation rules (spec: no refresh, no reliance on browser back, URL change optional):
+- Every view has its own way back: header link to the list, explicit close controls on the annotation and search panels. Nothing depends on the back button even though it works.
+- The spec says the URL does not have to change; it is read as permission, not a constraint. Browser history costs nothing over memory history and makes the app refresh-safe and linkable. If a fixed URL turns out to be a real requirement, `createMemoryHistory({ initialEntries: ['/'] })` in place of `createBrowserHistory()` in `src/router.tsx` is the whole change.
+
+Data layer: oRPC client + `@orpc/tanstack-query`. Queries are created from the oRPC client (`orpc.collectionMovies.list.queryOptions(...)`) so keys and types come from the router. Cache policy per mutation:
+- `updateAnnotation`: optimistic patch of the row into every cached page for the collection with `setQueriesData` on the partial key, rollback on error, server row swapped in on success; invalidate `collections.get` (summary + breakdown) and `collections.list` (list cards show the average).
+- `add` and `remove`: invalidate `collectionMovies.list` for that collection, `collections.get`, and `collections.list` (summary changed).
+- `create` and `delete` collection: invalidate `collections.list`.
+Nothing refetches the whole collection for a one-field change.
+
+Where genres and years appear:
+- Stats strip (detail, from `collections.get`): a row of labelled figures — films, runtime, average rating with filled stars and "12 of 24 rated" under it, year span "1972 – 2019" (single year when equal, labelled "Year", hidden when no release dates) — then top-5 genres and top tags as counted chips in two columns under a rule, genres in the muted outline style and tags in the filled one so TMDB's view and the user's do not blur. A figure with no answer is omitted, not zeroed, and a collection with no films has no strip at all — a page-wide panel carrying a single zero would take the room that belongs to "Nothing here yet. Add films." No bar list and no pie — UI_design 4.3 for why five small integers do not earn a chart.
+- Movie card: poster, title, year in muted text, star rating, the user's tag chips. No genres on the card; with rating and tags it gets noisy, and the user's own tags matter more inside a collection than TMDB's labels.
+- Annotation dialog header: poster, title, year, runtime, all genres as muted chips, TMDB vote average, overview, in two columns. Full movie facts live one click from any card. A dialog rather than a side sheet: it is the shape a film opens in on the services these collections are made of, and it is wide enough to put the poster beside the writing — UI_design 4.5 for the trade.
+- Search results: poster, title, year, two-line overview. No genres, since hits carry genre ids only and mapping them needs TMDB's genre list; names appear once the movie is added.
+- Not yet: filtering or sorting by genre or year. Next feature, and a cheap one (a filter param on `collectionMovies.list`); listed under more time. A filter narrows the grid only; the stats strip always describes the whole collection, so the stats queries never need a filtered variant.
+
+UI kit: Tailwind + shadcn/ui, installed with the CLI so components live in `src/components/ui/`. Only the pieces in use:
+- `Button`, `Input`, `Textarea`, `Label`, `Card` for forms and the collection list.
+- `Dialog` for all four overlays, the two big ones told apart by proportion: the search panel is a tall narrow list, the annotation panel a wide two-column card. The confirms are the small one — delete a collection, remove a film, discard an unsaved note, the last of them nested over the annotation panel.
+- `Badge` for tags and genre chips; a small hand-written star rating control (no shadcn primitive for it).
+- `Skeleton` for loading states; `sonner` toast for errors and "Added" feedback.
+App-level components (`MovieCard`, `StatsStrip`, `TagInput`, `StarRating`, `AnnotationDialog`, `SearchDialog`) live in `src/components/` and compose the kit; route components (`Collections`, `CollectionDetail`, `SignIn`, and the two the router falls back to, `NotFound` and `RouteError`) live in `src/routes/`. Rule: route components wire queries, mutations and navigation to components and carry no styling of their own.
