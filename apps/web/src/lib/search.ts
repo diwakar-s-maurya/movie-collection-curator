@@ -29,3 +29,12 @@ export function validatePageSearch(
 export const pageSearchMiddleware = [
   stripSearchParams<PageSearch>({ page: FIRST_PAGE }),
 ]
+
+/**
+ * Which page to be on after removing a row: one step back when the row was the
+ * last on a page that is not the first. Without this the user is left looking
+ * at a page that no longer exists.
+ */
+export function pageAfterRemoval(rowsOnPage: number | undefined, page: number) {
+  return rowsOnPage === 1 && page > FIRST_PAGE ? page - 1 : page
+}

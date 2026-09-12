@@ -12,3 +12,9 @@ export function formatRuntime(minutes: number): string | null {
 
   return rest === 0 ? `${hours}h` : `${hours}h ${rest}m`
 }
+
+/** The year a film came out, from TMDB's ISO date. Null when TMDB has no date,
+ * so a card prints nothing rather than a guess. */
+export function releaseYear(releaseDate: string | null): string | null {
+  return releaseDate?.slice(0, 4) ?? null
+}
