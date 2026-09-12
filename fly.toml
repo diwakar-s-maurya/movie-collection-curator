@@ -1,0 +1,46 @@
+# One app, two processes: nginx serves the built SPA and reverse-proxies `/api`
+# to the Node API beside it, so the browser sees a single origin and the
+# session cookie stays same-origin (no CORS).
+
+app = 'movie-collection-curator'
+primary_region = 'sin'
+
+[build]
+
+# Migrations run once per deploy, before any new machine takes traffic. A
+# failure here aborts the release rather than leaving a half-migrated app up.
+[deploy]
+  # Run from the API's own directory: `prisma.config.ts` names the schema and
+  # migrations relative to it.
+  release_command = "sh -c 'cd apps/api && node_modules/.bin/prisma migrate deploy'"
+
+# Every deployment-varying value lives here, so there is one file to read
+# rather than an image default and an override to reconcile.
+[env]
+  # The database is a neighbour on Fly's private 6PN network, which is already
+  # encrypted and serves no certificate.
+  DATABASE_SSL = 'false'
+  # Fly terminates TLS in front of nginx, so the session cookie must be Secure.
+  COOKIE_SECURE = 'true'
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = 'suspend'
+  auto_start_machines = true
+  # A demo app, so it is allowed to idle down to nothing and wake on a request.
+  min_machines_running = 0
+  processes = ['app']
+
+  [[http_service.checks]]
+    interval = '30s'
+    timeout = '5s'
+    grace_period = '10s'
+    method = 'GET'
+    # Answered by nginx, so a check never wakes the API.
+    path = '/healthz'
+
+[[vm]]
+  memory = '512mb'
+  cpu_kind = 'shared'
+  cpus = 1

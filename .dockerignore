@@ -1,0 +1,19 @@
+# Installed inside the image; copying the host's tree would break native deps.
+node_modules
+**/node_modules
+
+# Rebuilt by `pnpm build`.
+dist
+**/dist
+*.tsbuildinfo
+**/*.tsbuildinfo
+
+# Secrets belong in `fly secrets`, never in a layer.
+.env
+.env.*
+!.env.example
+
+.git
+.github
+docker-compose.yml
+*.md
