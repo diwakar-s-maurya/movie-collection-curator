@@ -1,7 +1,6 @@
-import { z } from 'zod'
-
 import { authed, pub } from '../orpc.js'
 import { signInInput, user } from '../schemas/auth.js'
+import { ok } from '../schemas/common.js'
 import * as authService from '../services/auth.js'
 import { clearUserCookie, setUserCookie } from '../session.js'
 
@@ -23,7 +22,7 @@ export const authRouter = {
 
   signOut: pub
     .route({ method: 'POST', path: '/auth/sign-out', summary: 'Sign out' })
-    .output(z.object({ ok: z.literal(true) }))
+    .output(ok)
     .handler(({ context }) => {
       clearUserCookie(context.resHeaders)
 
