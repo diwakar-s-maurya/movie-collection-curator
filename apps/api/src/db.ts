@@ -52,6 +52,12 @@ function connectionString(): string {
   return url
 }
 
+/** How long one query may run. Every query here is a keyed lookup or one page
+ * of a list, so this catches a lock nobody is going to release. */
+const STATEMENT_TIMEOUT_MS = Number(
+  process.env.DATABASE_STATEMENT_TIMEOUT_MS ?? 5_000,
+)
+
 /**
  * The one client this process has. Services import it rather than taking a
  * `db` argument, so there is no second instance to construct by accident and
@@ -77,6 +83,12 @@ export const db: Db = new PrismaClient({
     connectionTimeoutMillis: Number(
       process.env.DATABASE_POOL_CONNECTION_TIMEOUT_MS ?? 5_000,
     ),
+    // That one bounds waiting for a connection, not using it: a query blocked
+    // on a lock would hold one indefinitely and starve the pool it guards.
+    statement_timeout: STATEMENT_TIMEOUT_MS,
+    // The same deadline from this side, a second later so Postgres normally
+    // answers first. This is what fires when the connection is wedged.
+    query_timeout: STATEMENT_TIMEOUT_MS + 1_000,
     // Off for the compose database, which serves no certificate; on for a
     // managed one, which refuses a plaintext connection. An `sslmode` in
     // DATABASE_URL wins over this, since pg parses the URL after its options.

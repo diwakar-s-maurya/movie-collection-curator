@@ -1,7 +1,11 @@
 import type { ApiClient } from '@curator/api/router'
-import { createORPCClient } from '@orpc/client'
+import { createORPCClient, ORPCError } from '@orpc/client'
 import { RPCLink } from '@orpc/client/fetch'
 import { createTanstackQueryUtils } from '@orpc/tanstack-query'
+
+/** `fetch` has no deadline of its own, so a request the server accepts and
+ * never answers leaves a query spinning and a write sitting on "Saving…". */
+const REQUEST_TIMEOUT_MS = 20_000
 
 /**
  * Same-origin, so the session cookie rides along with no `credentials` setting
@@ -9,7 +13,36 @@ import { createTanstackQueryUtils } from '@orpc/tanstack-query'
  * the prefix (`vite.config.ts`); in a build, whatever serves the SPA does the
  * same.
  */
-const link = new RPCLink({ url: `${window.location.origin}/api/rpc` })
+const link = new RPCLink({
+  url: `${window.location.origin}/api/rpc`,
+  fetch: async (request, init) => {
+    try {
+      // Combined with the request's own signal rather than replacing it: that
+      // signal is how TanStack cancels, and dropping it would leave
+      // superseded requests running.
+      return await fetch(request, {
+        ...init,
+        signal: AbortSignal.any([
+          request.signal,
+          AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+        ]),
+      })
+    } catch (cause) {
+      // `AbortSignal.timeout` aborts with a DOMException named TimeoutError.
+      // Given a code here rather than sniffed for downstream, so it arrives as
+      // one of the answers the app already handles: `retry` sees 408 and stops
+      // asking, and `errorMessage` passes the sentence through. A plain
+      // AbortError is a cancelled query and is rethrown untouched.
+      if (cause instanceof Error && cause.name === 'TimeoutError') {
+        throw new ORPCError('TIMEOUT', {
+          message: 'The server took too long to answer. Try again in a moment.',
+        })
+      }
+
+      throw cause
+    }
+  },
+})
 
 /**
  * The whole API, typed from the server's router with no codegen step. The
