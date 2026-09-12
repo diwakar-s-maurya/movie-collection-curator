@@ -1,3 +1,4 @@
+import type { TmdbClient } from '@curator/tmdb'
 import { OpenAPIHandler } from '@orpc/openapi/node'
 import { OpenAPIReferencePlugin } from '@orpc/openapi/plugins'
 import {
@@ -39,9 +40,11 @@ const handler = new OpenAPIHandler(router, {
  * Express. Nothing may parse the body above this: the handler reads the
  * request stream itself.
  */
-export function apiHandler(): RequestHandler {
+export function apiHandler(tmdb: TmdbClient): RequestHandler {
   return async (req, res, next) => {
-    const { matched } = await handler.handle(req, res, { context: {} })
+    const { matched } = await handler.handle(req, res, {
+      context: { tmdb },
+    })
 
     if (!matched) next()
   }

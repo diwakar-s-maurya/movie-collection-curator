@@ -11,8 +11,10 @@ import {
 import { ok } from '../schemas/common.js'
 import * as collectionsService from '../services/collections.js'
 
-/** What a collection the signed-in user does not own looks like from outside. */
-function notFound() {
+/** What a collection the signed-in user does not own looks like from outside.
+ * Shared with the per-movie routes, so the same situation gets the same
+ * answer whichever route named the collection. */
+export function noSuchCollection() {
   return new ORPCError('NOT_FOUND', { message: 'No such collection.' })
 }
 
@@ -42,7 +44,7 @@ export const collectionsRouter = {
         context.user.id,
         input.id,
       )
-      if (!found) throw notFound()
+      if (!found) throw noSuchCollection()
 
       return found
     }),
@@ -73,7 +75,7 @@ export const collectionsRouter = {
         context.user.id,
         input.id,
       )
-      if (!deleted) throw notFound()
+      if (!deleted) throw noSuchCollection()
 
       return { ok: true } as const
     }),

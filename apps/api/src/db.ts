@@ -7,6 +7,13 @@ import { PrismaClient } from './generated/prisma/client.js'
 export type Db = PrismaClient
 
 /**
+ * Prisma's own type helpers, re-exported for the same reason: a service names
+ * the row a `select` produces as `Prisma.XGetPayload<{ select: typeof xSelect }>`
+ * without reaching into `generated/`.
+ */
+export type { Prisma } from './generated/prisma/client.js'
+
+/**
  * Which database this process talks to, decided here and nowhere else.
  *
  * Under Vitest the answer is `TEST_DATABASE_URL` or an error, never a fallback

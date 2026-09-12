@@ -16,7 +16,7 @@ app.get('/health', (_req: Request, res: Response) => {
   res.json({ ok: true })
 })
 
-app.use(apiHandler())
+app.use(apiHandler(tmdb))
 
 // Unmatched routes fall through to here, so it must stay below every route.
 app.use((req: Request, res: Response) => {
