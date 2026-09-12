@@ -47,7 +47,7 @@ pnpm test                   # unit suites; the service suite truncates TEST_DATA
 
 Tests are not required by the brief, so I wrote them only where a bug would be silent — where the app keeps working and shows you something wrong. Three suites:
 
-- **TMDB client** (`packages/tmdb`), against an injected fake `fetch`. Error mapping: 404 → `NOT_FOUND`, 429 → `RATE_LIMITED`, malformed JSON → `UPSTREAM`, a 200 whose body fails the Zod response schema → `INVALID_RESPONSE`, plus the happy path. Request shape: the auth header is set and `query` is URL-encoded. I cannot make TMDB return a 429 or change its shape on demand, so this is the only way to exercise those branches at all.
+- **TMDB client** (`packages/tmdb`), against an injected fake `fetch`. Error mapping: 404 → `NOT_FOUND`, 429 → `RATE_LIMITED`, malformed JSON → `UPSTREAM`, a 200 whose body fails the Zod response schema → `INVALID_RESPONSE`, a timeout → `UPSTREAM` naming the deadline, plus the happy path. Request shape: the auth header is set, `query` is URL-encoded and the deadline is attached. I cannot make TMDB return a 429 or change its shape on demand, so this is the only way to exercise those branches at all.
 - **Annotation input normalisation** (`apps/api`, pure Zod schema): tags are trimmed, de-duplicated, empties dropped and capped; rating rejects 0, 6 and 3.5. A bug here is invisible — `"sci-fi "` and `"sci-fi"` silently become two tags and the tag breakdown lies.
 - **Services against the database** (`apps/api`, against `TEST_DATABASE_URL`, truncates between tests). Two things: per-user scoping — user A reading, mutating or deleting user B's collection gets `NOT_FOUND`, never data; and the stats SQL — a collection built from known fixtures returns the expected count, runtime, average, rated count, year span and top genres and tags; average is null when nothing is rated; a movie with no runtime or no release date does not break the sums or the span. Scoping is the "assume multiple users" requirement, and a failure there is a data leak with no error. The stats are three hand-written queries (decision 5) that Prisma cannot type-check, so a wrong join or a null handled badly renders a confidently wrong number.
 
@@ -131,6 +131,7 @@ Each of these is a trade-off argued in the decision log, not an oversight. The f
 - **Tag normalisation** (decision 4).
 - **A GraphQL facade** over the same services, if a second consumer ever makes field selection worth it.
 - **Own CDN for posters** — copy from TMDB on first add, serve from an origin I control.
+- **An `AbortSignal` pass-through on the TMDB client**, so a search the user has already typed past is cancelled upstream instead of running to completion; today only the per-request timeout cuts a call short.
 - **Tune the search debounce**, and add a throttle on top of it so continuous typing shows intermediate results instead of nothing until the 300 ms wait expires (decision 6).
 - **Extend the optimistic cache patch from annotations to membership.** `add` already answers with the row, so it could be spliced into the cached page and the stats adjusted in place, the way `useUpdateAnnotation` does for a rating — the work is the page-boundary rule.
 
