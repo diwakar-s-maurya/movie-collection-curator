@@ -209,17 +209,22 @@ const AnnotationDialog = ({
             </Button>
 
             <div className="flex items-center gap-3">
-              {/* The dialog stays open on a failed save with the note still in
-                  the box: nothing the user wrote is thrown away by a failure. */}
+              {/* Saving is the last thing the dialog is for, so a save that
+                  lands closes it. Only on success: a failure leaves the panel
+                  open with the note still in the box, since nothing the user
+                  wrote should be thrown away by one. */}
               <ErrorText error={update.error} />
               <Button
                 disabled={!edited || update.isPending}
                 onClick={() =>
-                  update.mutate({
-                    tmdbId: shown.tmdbId,
-                    note: fields.note,
-                    tags: fields.tags,
-                  })
+                  update.mutate(
+                    {
+                      tmdbId: shown.tmdbId,
+                      note: fields.note,
+                      tags: fields.tags,
+                    },
+                    { onSuccess: close },
+                  )
                 }
               >
                 {update.isPending ? 'Saving…' : 'Save'}
