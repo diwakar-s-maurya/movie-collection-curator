@@ -3,6 +3,7 @@ import { ORPCError } from '@orpc/server'
 import { authed } from '../orpc.js'
 import {
   collection,
+  collectionDetail,
   collectionIdInput,
   collectionPage,
   collectionsListInput,
@@ -35,10 +36,10 @@ export const collectionsRouter = {
     .route({
       method: 'GET',
       path: '/collections/{id}',
-      summary: 'One collection',
+      summary: 'One collection and its stats, without its movies',
     })
     .input(collectionIdInput)
-    .output(collection)
+    .output(collectionDetail)
     .handler(async ({ input, context }) => {
       const found = await collectionsService.findCollection(
         context.user.id,
