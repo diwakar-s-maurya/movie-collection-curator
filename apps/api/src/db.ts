@@ -16,9 +16,19 @@ export type { Prisma }
 /** Postgres rejected a write for a unique index — asked here so a service
  * does not have to import Prisma's error class from the generated path. */
 export function isUniqueViolation(error: unknown): boolean {
+  return isKnownRequestError(error, 'P2002')
+}
+
+/** Postgres rejected a write because the row it points at is not there — the
+ * answer a write gets when the row it was checked against has since been
+ * deleted. */
+export function isForeignKeyViolation(error: unknown): boolean {
+  return isKnownRequestError(error, 'P2003')
+}
+
+function isKnownRequestError(error: unknown, code: string): boolean {
   return (
-    error instanceof Prisma.PrismaClientKnownRequestError &&
-    error.code === 'P2002'
+    error instanceof Prisma.PrismaClientKnownRequestError && error.code === code
   )
 }
 

@@ -19,8 +19,13 @@ export async function signIn(name: string): Promise<User> {
   return db.user.upsert({
     where: { name },
     create: { name },
-    // Nothing to change about an existing user: the row is the sign-in.
-    update: {},
+    // There is nothing to change about an existing user — the row is the
+    // sign-in — but the no-op has to name a column: an empty `update` is what
+    // decides whether this is one statement or three. Prisma compiles this to
+    // `INSERT ... ON CONFLICT DO UPDATE`, and compiles `update: {}` to a
+    // SELECT and then an INSERT, which is two browsers racing for the same
+    // new name and one of them getting a unique violation.
+    update: { name },
     select: userSelect,
   })
 }

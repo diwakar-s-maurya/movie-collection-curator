@@ -1,6 +1,6 @@
 import { type MovieDetails, posterUrl, type TmdbClient } from '@curator/tmdb'
 import type { z } from 'zod'
-import { db, type Prisma } from '../db.js'
+import { db, isForeignKeyViolation, type Prisma } from '../db.js'
 
 import {
   type collectionMovie,
@@ -76,8 +76,9 @@ function toSnapshot(details: MovieDetails) {
  * later reads skip TMDB entirely (README decision 2).
  *
  * Null when the user has no collection with that id — the same answer someone
- * else's collection gets. Add is idempotent: a movie already there returns the
- * row it is on.
+ * else's collection gets, and the answer a collection deleted mid-add gets.
+ * Add is idempotent: a movie already there returns the row it is on, however
+ * many adds of it arrive at once.
  */
 export async function addMovie(
   tmdb: TmdbClient,
@@ -112,15 +113,34 @@ export async function addMovie(
     })
   }
 
-  const added = await db.collectionMovie.upsert({
+  try {
+    // Insert it if it is not there and leave it alone if it is, in one
+    // statement: `ON CONFLICT DO NOTHING`. Several adds of the same film at
+    // once — a double click, or a second device — are then one row and one
+    // answer each, rather than a unique violation for everyone who lost.
+    await db.collectionMovie.createMany({
+      data: [{ collectionId, tmdbId }],
+      skipDuplicates: true,
+    })
+  } catch (error) {
+    // The collection was deleted between the ownership check above and this
+    // write, so its id now points at nothing: the same answer it would have
+    // got a moment later, rather than a 500 for a row that is simply gone.
+    // The other foreign key on this table cannot be the one that failed — the
+    // movie was cached above, and `movies` rows are never deleted.
+    if (!isForeignKeyViolation(error)) throw error
+
+    return null
+  }
+
+  const added = await db.collectionMovie.findUnique({
     where: { collectionId_tmdbId: { collectionId, tmdbId } },
-    create: { collectionId, tmdbId },
-    // Nothing to change about a membership that already exists.
-    update: {},
     select: collectionMovieSelect,
   })
 
-  return toCollectionMovie(added)
+  // Removed again in the time that took, which is the answer a remove
+  // arriving in the same moment would have given anyway.
+  return added && toCollectionMovie(added)
 }
 
 /**

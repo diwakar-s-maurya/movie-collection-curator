@@ -1,7 +1,7 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest'
 
 import { db } from '../db.js'
-import { truncateAll } from '../test/db.js'
+import { truncateAll, warmPool } from '../test/db.js'
 import {
   fakeTmdb,
   heat,
@@ -16,6 +16,10 @@ import {
   removeMovie,
   updateAnnotation,
 } from './collection-movies.js'
+import { deleteCollection } from './collections.js'
+
+/** Enough adds at once to land on each other. */
+const AT_ONCE = 16
 
 beforeEach(truncateAll)
 afterAll(() => db.$disconnect())
@@ -77,6 +81,47 @@ describe('adding a movie', () => {
 
     expect(copy).toEqual(hers)
     expect(tmdb.getMovie).toHaveBeenCalledTimes(1)
+  })
+
+  /**
+   * Two clicks on one Add button, or the same film added from two devices.
+   * The membership write reads before it inserts — a `select` that reaches
+   * through to the movie cannot be one `ON CONFLICT` statement — so several
+   * adds at once all try to insert, and every loser has to come back with the
+   * row the winner made rather than a unique violation.
+   */
+  it('answers every one of several adds of the same film at once', async () => {
+    const { user, collection } = await ownerWithCollection('alice')
+    const tmdb = fakeTmdb()
+    const input = { collectionId: collection.id, tmdbId: heat.tmdbId }
+    await warmPool(AT_ONCE)
+
+    const added = await Promise.all(
+      Array.from({ length: AT_ONCE }, () => addMovie(tmdb, user.id, input)),
+    )
+
+    expect(added.every((movie) => movie?.tmdbId === heat.tmdbId)).toBe(true)
+    expect(await db.collectionMovie.count({ where: input })).toBe(1)
+  })
+
+  /**
+   * The collection is checked and then written to, so it can be deleted in
+   * between — on another device, or in another tab. Whichever statement wins,
+   * the add answers: a film, or the null a collection that is not there gets.
+   * What it must not do is come back with the foreign key's error.
+   */
+  it('does not fail when the collection goes mid-add', async () => {
+    const { user, collection } = await ownerWithCollection('alice')
+
+    const [added] = await Promise.all([
+      addMovie(fakeTmdb(), user.id, {
+        collectionId: collection.id,
+        tmdbId: heat.tmdbId,
+      }),
+      deleteCollection(user.id, collection.id),
+    ])
+
+    expect(added === null || added.tmdbId === heat.tmdbId).toBe(true)
   })
 
   it('keeps a movie TMDB has no date or runtime for', async () => {

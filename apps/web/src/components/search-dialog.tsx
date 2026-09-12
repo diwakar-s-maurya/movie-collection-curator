@@ -58,6 +58,8 @@ const SearchDialog = ({
    * just-added row say "Added" without re-running the search.
    */
   const [added, setAdded] = useState<ReadonlySet<number>>(new Set())
+  /** The films whose add is still in flight, so each row answers for itself. */
+  const [adding, setAdding] = useState<ReadonlySet<number>>(new Set())
   const [bodyRef, bodyHeight] = useContentHeight<HTMLDivElement>()
 
   // The field and the last request disagree for the length of the debounce,
@@ -96,6 +98,26 @@ const SearchDialog = ({
       onError: (error) => toast.error(errorMessage(error)),
     }),
   )
+
+  /**
+   * Adds one film, and keeps that row's button on "Adding…" until this add
+   * settles. Per row rather than `add.isPending`, which describes whichever
+   * call was made last: adding a second film would otherwise hand the first
+   * one's row back a button for a film already on its way, and the second
+   * click adds it twice.
+   */
+  const addFilm = (tmdbId: number) => {
+    setAdding((previous) => new Set(previous).add(tmdbId))
+    add.mutate(
+      { collectionId, tmdbId },
+      {
+        onSettled: () =>
+          setAdding(
+            (previous) => new Set([...previous].filter((id) => id !== tmdbId)),
+          ),
+      },
+    )
+  }
 
   const onDialogOpenChange = (nextOpen: boolean) => {
     onOpenChange(nextOpen)
@@ -147,8 +169,8 @@ const SearchDialog = ({
             key={result.tmdbId}
             result={result}
             added={result.inCollection || added.has(result.tmdbId)}
-            pending={add.isPending && add.variables.tmdbId === result.tmdbId}
-            onAdd={() => add.mutate({ collectionId, tmdbId: result.tmdbId })}
+            pending={adding.has(result.tmdbId)}
+            onAdd={() => addFilm(result.tmdbId)}
           />
         ))}
       </ul>
