@@ -118,6 +118,7 @@ Each of these is a trade-off argued in the decision log, not an oversight. The f
 - **Stats recomputed on every read** (decision 5) — the breakdown queries cannot use an index, so they degrade with collection size.
 - **Offset pagination.** `page`/`pageSize` on both lists can skip or repeat rows if rows change between page loads, and deep pages get slower because the database still walks what it skips. Offset is what the size of this app justifies.
 - **Adding or removing a film refetches instead of patching the cache.** Annotations write optimistically, membership does not: an add or a remove invalidates the grid page and both collection queries. A membership patch has to reason about page boundaries and the stats arithmetic, while an annotation patch changes one field of a row already on screen.
+- **The CSP still allows inline styles.** Both servers send a deny-by-default Content-Security-Policy ([IMPLEMENTATION](IMPLEMENTATION.md#content-security-policy)), but `style-src` has to keep `'unsafe-inline'`: React writes `style` attributes and Sonner appends a `<style>` element at runtime. Closing it means a nonce, and a nonce means a server rendering the HTML — which this app, served as static files, does not have.
 - **Thin tests** (see Tests above) — three suites, nothing through the oRPC layer or the cookie.
 
 ### Next if this were real
