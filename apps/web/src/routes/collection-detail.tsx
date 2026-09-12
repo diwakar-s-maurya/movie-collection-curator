@@ -5,8 +5,8 @@ import {
   useQuery,
   useQueryClient,
 } from '@tanstack/react-query'
-import { useNavigate, useParams, useSearch } from '@tanstack/react-router'
-import { Plus } from 'lucide-react'
+import { Link, useNavigate, useParams, useSearch } from '@tanstack/react-router'
+import { ChevronLeft, Plus } from 'lucide-react'
 import { type ReactNode, useState } from 'react'
 import { toast } from 'sonner'
 
@@ -205,6 +205,17 @@ const CollectionDetail = () => {
 
   return (
     <div className="flex flex-col gap-6">
+      {/* Up one level, not history.back(): a shared link lands here with an
+          empty history. */}
+      <Button
+        variant="ghost"
+        size="sm"
+        className="-mb-2 self-start text-muted-foreground"
+        render={<Link to="/" />}
+      >
+        <ChevronLeft />
+        Back to collections
+      </Button>
       <div className="flex items-start justify-between gap-4">
         {collection.data ? (
           <div className="flex flex-col gap-1">
