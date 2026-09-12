@@ -3,6 +3,11 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
+  "exports": {
+    "./router": {
+      "types": "./dist/routers/index.d.ts"
+    }
+  },
   "scripts": {
     "postinstall": "prisma generate",
     "dev": "tsc -b && pnpm db:deploy && tsx watch --env-file-if-exists=../../.env src/app.ts",
