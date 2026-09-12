@@ -19,7 +19,7 @@ import { Pagination } from '@/components/pagination'
 import { RetryableError } from '@/components/retryable-error'
 import { SearchDialog } from '@/components/search-dialog'
 import { StatsStrip } from '@/components/stats-strip'
-import { Button } from '@/components/ui/button'
+import { Button, buttonVariants } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { errorMessage } from '@/lib/error-message'
 import { type CollectionMovie, orpc } from '@/lib/orpc'
@@ -207,15 +207,17 @@ const CollectionDetail = () => {
     <div className="flex flex-col gap-6">
       {/* Up one level, not history.back(): a shared link lands here with an
           empty history. */}
-      <Button
-        variant="ghost"
-        size="sm"
-        className="-mb-2 self-start text-muted-foreground"
-        render={<Link to="/" />}
+      <Link
+        to="/"
+        className={buttonVariants({
+          variant: 'ghost',
+          size: 'sm',
+          className: '-mb-2 self-start text-muted-foreground',
+        })}
       >
         <ChevronLeft />
         Back to collections
-      </Button>
+      </Link>
       <div className="flex items-start justify-between gap-4">
         {collection.data ? (
           <div className="flex flex-col gap-1">
