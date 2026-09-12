@@ -3,6 +3,12 @@ import express, { type Request, type Response } from 'express'
 import { apiHandler } from './api.js'
 import { db } from './db.js'
 import { registerGracefulShutdown } from './shutdown.js'
+import { createTmdb, reportAccessToken } from './tmdb.js'
+
+const tmdb = createTmdb({
+  accessToken: process.env.TMDB_ACCESS_TOKEN,
+  timeoutMs: process.env.TMDB_TIMEOUT_MS,
+})
 
 const app = express()
 
@@ -24,6 +30,7 @@ const PORT = Number(process.env.PORT ?? 3000)
 const server = app.listen(PORT, () => {
   console.log(`[api] listening on http://localhost:${PORT}`)
   console.log(`[api] openapi reference on http://localhost:${PORT}/docs`)
+  void reportAccessToken(tmdb)
 })
 
 // Order matters: stop taking requests, then drop the connection pool the
