@@ -30,13 +30,31 @@ export type CollectionSummary = Awaited<
   ReturnType<ApiClient['collections']['list']>
 >['results'][number]
 
-/**
- * One film in the open collection: TMDB's snapshot and the user's annotation
- * on the same row, as the grid and the annotation sheet both read it.
- */
-export type CollectionMovie = Awaited<
+/** One collection with everything its own page shows: the row, the summary
+ * and the two breakdowns behind the stats strip. */
+export type CollectionDetail = Awaited<
+  ReturnType<ApiClient['collections']['get']>
+>
+
+/** The numbers on that page: the summary plus the two breakdowns. */
+export type CollectionStats = CollectionDetail['stats']
+
+/** One page of the movie grid. The annotation hook patches rows into cached
+ * pages, so it needs the page's shape and not only the row's. */
+export type CollectionMoviePage = Awaited<
   ReturnType<ApiClient['collectionMovies']['list']>
->['results'][number]
+>
+
+/** One film in the open collection: TMDB's snapshot and the user's annotation
+ * on the same row. */
+export type CollectionMovie = CollectionMoviePage['results'][number]
+
+/** What one write to an annotation may set: the fields, without the pair of
+ * ids that say which row they land on. */
+export type AnnotationPatch = Omit<
+  Parameters<ApiClient['collectionMovies']['updateAnnotation']>[0],
+  'collectionId' | 'tmdbId'
+>
 
 /** One hit in the search dialog: a film, plus whether the open collection
  * already holds it. */
