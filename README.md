@@ -13,7 +13,7 @@ docker-compose.yml    # postgres only, with a dev and a test database
 
 ## Running it
 
-Prerequisites: Node 22+, pnpm, and a Postgres. The compose file gives you the Postgres in one command if you have Docker; if you already run Postgres, skip it and point `DATABASE_URL` (and `TEST_DATABASE_URL`, if you want the tests) at yours.
+Prerequisites: Node 22+, pnpm, and Postgres 18 or newer (the schema uses its native `uuidv7()` for primary keys). The compose file gives you the Postgres in one command if you have Docker; if you already run Postgres, skip it and point `DATABASE_URL` (and `TEST_DATABASE_URL`, if you want the tests) at yours.
 
 ```bash
 cp .env.example .env        # then put your TMDB token in it

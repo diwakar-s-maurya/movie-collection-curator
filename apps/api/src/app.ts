@@ -1,5 +1,6 @@
 import express, { type Request, type Response } from 'express'
 
+import { db } from './db.js'
 import { registerGracefulShutdown } from './shutdown.js'
 
 const app = express()
@@ -21,6 +22,8 @@ const server = app.listen(PORT, () => {
   console.log(`[api] listening on http://localhost:${PORT}`)
 })
 
+// Order matters: stop taking requests, then drop the connection pool the
+// in-flight ones are still using.
 registerGracefulShutdown([
   {
     name: 'http server',
@@ -29,4 +32,5 @@ registerGracefulShutdown([
         server.close((err) => (err ? reject(err) : resolve()))
       }),
   },
+  { name: 'database', close: () => db.$disconnect() },
 ])
