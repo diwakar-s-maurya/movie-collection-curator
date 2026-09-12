@@ -2,6 +2,7 @@ import { afterAll, beforeEach, describe, expect, it } from 'vitest'
 
 import { db } from '../db.js'
 import { truncateAll } from '../test/db.js'
+import { newCollection } from '../test/fixtures.js'
 import { signIn } from './auth.js'
 import {
   createCollection,
@@ -25,8 +26,8 @@ async function names(userId: string, input = firstPage) {
 async function twoOwners() {
   const [alice, bob] = await Promise.all([signIn('alice'), signIn('bob')])
   const [hers, his] = await Promise.all([
-    createCollection(alice.id, { name: 'Noir', description: null }),
-    createCollection(bob.id, { name: 'Westerns', description: null }),
+    newCollection(alice.id, 'Noir'),
+    newCollection(bob.id, 'Westerns'),
   ])
 
   return { alice, bob, hers, his }
@@ -41,7 +42,7 @@ describe('collections', () => {
   it('pages the collections, newest first', async () => {
     const user = await signIn('alice')
     for (const name of ['One', 'Two', 'Three']) {
-      await createCollection(user.id, { name, description: null })
+      await newCollection(user.id, name)
     }
     const page = (page: number) => ({ page, pageSize: 2 })
 
@@ -67,20 +68,48 @@ describe('collections', () => {
 
   it('lists newest first', async () => {
     const user = await signIn('alice')
-    const first = await createCollection(user.id, {
-      name: 'Noir',
-      description: null,
-    })
-    const second = await createCollection(user.id, {
-      name: 'Westerns',
-      description: null,
-    })
+    const first = await newCollection(user.id, 'Noir')
+    const second = await newCollection(user.id, 'Westerns')
 
     // Stats ride along on every card; what they hold is stats.test.ts.
     expect((await listCollections(user.id, firstPage)).results).toMatchObject([
       { id: second.id },
       { id: first.id },
     ])
+  })
+})
+
+// A name is how the user tells one card from another, so a second collection
+// by that name is refused rather than stored as a card nobody can place.
+describe('one name per user', () => {
+  const noir = { name: 'Noir', description: null }
+
+  it('refuses a name the user already has, whatever its case', async () => {
+    const user = await signIn('alice')
+    await createCollection(user.id, noir)
+
+    expect(await createCollection(user.id, noir)).toBeNull()
+    expect(
+      await createCollection(user.id, { ...noir, name: 'NOIR' }),
+    ).toBeNull()
+    // The rule rejects the second name; it does not rewrite the first.
+    expect(await names(user.id)).toEqual(['Noir'])
+  })
+
+  it('frees the name again when the collection is deleted', async () => {
+    const user = await signIn('alice')
+    const first = await newCollection(user.id, 'Noir')
+    await deleteCollection(user.id, first.id)
+
+    expect(await createCollection(user.id, noir)).not.toBeNull()
+  })
+
+  it('scopes the name to its owner', async () => {
+    // Alice already owns the only Noir there is.
+    const { bob } = await twoOwners()
+
+    expect(await createCollection(bob.id, noir)).not.toBeNull()
+    expect(await names(bob.id)).toEqual(['Noir', 'Westerns'])
   })
 })
 
