@@ -1,0 +1,11 @@
+{
+  // Everything the build config covers, plus the tests and the vitest config.
+  // This is half of what `pnpm typecheck` runs, so a broken test is a failed
+  // type-check.
+  "extends": "./tsconfig.json",
+  // Not composite: a project that emits nothing cannot be one.
+  // rootDir widens to the package, since vitest.config.ts sits beside src/.
+  "compilerOptions": { "composite": false, "noEmit": true, "rootDir": "." },
+  "include": ["src/**/*.ts", "vitest.config.ts"],
+  "exclude": []
+}
