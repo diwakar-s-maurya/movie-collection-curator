@@ -64,5 +64,22 @@ function connectionString(): string {
  * context here rather than a parameter on every function.
  */
 export const db: Db = new PrismaClient({
-  adapter: new PrismaPg({ connectionString: connectionString() }),
+  adapter: new PrismaPg({
+    connectionString: connectionString(),
+    // Per process, so Postgres' ceiling is this times the number of API
+    // processes: shrink it before running a second one.
+    max: Number(process.env.DATABASE_POOL_MAX ?? 10),
+    idleTimeoutMillis: Number(
+      process.env.DATABASE_POOL_IDLE_TIMEOUT_MS ?? 10_000,
+    ),
+    // pg would otherwise wait forever for a free connection, turning a
+    // saturated pool into a request that never answers.
+    connectionTimeoutMillis: Number(
+      process.env.DATABASE_POOL_CONNECTION_TIMEOUT_MS ?? 5_000,
+    ),
+    // Off for the compose database, which serves no certificate; on for a
+    // managed one, which refuses a plaintext connection. An `sslmode` in
+    // DATABASE_URL wins over this, since pg parses the URL after its options.
+    ssl: process.env.DATABASE_SSL === 'true',
+  }),
 })

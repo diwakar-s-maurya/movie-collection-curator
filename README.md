@@ -38,6 +38,8 @@ The brief says no Docker, and I read that as no deployment work: no images for t
 | `TMDB_ACCESS_TOKEN` | TMDB v4 read access token, sent as `Authorization: Bearer`. The v3 API key is not supported: one auth path. |
 | `DATABASE_URL` | Postgres connection string. `.env.example` carries the one that matches the compose file. |
 | `TEST_DATABASE_URL` | Second database, used only by the service tests, which truncate it. Also in `.env.example`, pointing at the compose file's test database. |
+| `DATABASE_POOL_MAX` | Connections one API process may hold (default 10), with `DATABASE_POOL_IDLE_TIMEOUT_MS` and `DATABASE_POOL_CONNECTION_TIMEOUT_MS` around it. Postgres' ceiling is this times the number of processes. |
+| `DATABASE_SSL` | `true` turns on TLS to Postgres. Off by default: the compose database serves no certificate, a managed one needs it. An `sslmode` in `DATABASE_URL` wins over it. |
 
 ### Tests
 
@@ -142,7 +144,7 @@ Fifty thousand users with large collections, ranked by what falls over first:
 
 1. **The TMDB rate limit, via search.** One shared key across all users. TMDB's ceiling is somewhere around 40 requests per second; today the only mitigation is the client-side debounce and the query cache (decision 6). Fix: server-side result cache (Redis, short TTL) plus per-user rate limits, and serve hits from the local `movies` table before going upstream.
 2. **Stats recomputed on every read.** The summary is a join and aggregate over every membership row, and the breakdowns (`jsonb_array_elements` over genres, `unnest` over tags) are not indexable, so all three degrade with collection size — and because there is no field selection, every list and detail view pays for them. That is decision 1's caveat coming due. Fix, in order: precomputed counters for the summary (`movie_count`, `rated_count`, `rating_sum`, `runtime_sum` on the collection row, updated in the write transaction, with a periodic recount job as the drift repair); then normalised genre and tag tables with per-collection count rows, or a cached breakdown invalidated on write.
-3. **Postgres connection exhaustion** once the API runs as more than one process. Fix: PgBouncer or RDS Proxy, smaller per-instance pools.
+3. **Postgres connection exhaustion** once the API runs as more than one process. Fix: PgBouncer or RDS Proxy; the per-instance ceiling is already `DATABASE_POOL_MAX`, so shrinking it is a config change.
 4. **The `movies` snapshot** — unbounded growth and increasingly stale rows. Fix: the `fetched_at` TTL with background revalidation already on the list above.
 5. **Offset pagination on deep pages.** Both lists walk and discard everything before the page they want. Fix: keyset on the sort column — `(added_at, id)` for movies, `(created_at, id)` for collections.
 6. **No real auth, and unbounded user creation.** Anyone can create users and forge the cookie. Fix: real credentials, server-side sessions, rate limiting.
