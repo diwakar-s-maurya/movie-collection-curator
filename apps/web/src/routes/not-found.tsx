@@ -6,9 +6,8 @@ import { Button } from '@/components/ui/button'
 /**
  * "What you asked for is not here, and here is the way out." Two things reach
  * it: a URL the router does not recognise, and a collection the API answers
- * `NOT_FOUND` for — deleted in another tab, or a stale link. Neither is an
- * error, so both get a screen rather than an error boundary, and they get the
- * same one, since the way out is the same.
+ * `NOT_FOUND` for. Neither is an error, so both get a screen rather than an
+ * error boundary.
  *
  * The panel carries no page frame of its own: the router's not-found wraps it
  * in `CenteredPanel`, while a missing collection is rendered by a route already

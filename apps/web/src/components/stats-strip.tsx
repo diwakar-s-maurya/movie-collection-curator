@@ -95,6 +95,10 @@ type StatsStripProps = { stats: CollectionStats }
  * its own, and an annotation write invalidates that query.
  */
 const StatsStrip = ({ stats }: StatsStripProps) => {
+  // An empty collection would make this a page-wide panel carrying one zero,
+  // taking the attention that belongs to "Nothing here yet. Add films."
+  if (stats.movieCount === 0) return null
+
   const runtime = formatRuntime(stats.runtimeMinutes)
   const span = yearSpan(stats.yearMin, stats.yearMax)
   const hasBreakdowns = stats.genres.length > 0 || stats.tags.length > 0
@@ -104,9 +108,8 @@ const StatsStrip = ({ stats }: StatsStripProps) => {
       aria-label="Collection statistics"
       className="flex flex-col gap-4 rounded-xl border bg-muted/30 p-4"
     >
-      {/* An empty collection is one tile reading zero. The others are left out
-          rather than printed as zeroes: "0h 0m" and "0.0 avg" read as facts
-          about films that are not there. */}
+      {/* A figure with nothing behind it is left out rather than printed as a
+          zero: "0h 0m" reads as a fact about the films. */}
       <div className="grid grid-cols-2 gap-x-8 gap-y-4 sm:grid-cols-4">
         <Stat label="Films">{stats.movieCount}</Stat>
         {runtime ? <Stat label="Runtime">{runtime}</Stat> : null}

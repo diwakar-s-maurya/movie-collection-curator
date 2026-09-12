@@ -184,13 +184,8 @@ export async function listCollectionMovies(
 
 /**
  * Writes the fields the patch carries onto one membership row, and reports
- * whether there was such a row. False when the movie is not in a collection
- * of theirs, which covers a collection belonging to someone else, a film that
- * was never added, and one removed in another tab.
- *
- * One statement, the same shape `removeMovie` uses: the ownership check rides
- * in the `where` alongside the pairing, so there is no read to race with and
- * someone else's collection simply matches nothing.
+ * whether there was such a row. False covers someone else's collection, a film
+ * that was never added, and one removed on another device.
  *
  * Ownership rides in the `where`, as in `removeMovie`. Nothing is read back:
  * the client already holds the row and normalises by the same rules.

@@ -15,6 +15,7 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
+import { errorMessage } from '@/lib/error-message'
 import { releaseYear } from '@/lib/format'
 import { type MovieSearchResult, orpc } from '@/lib/orpc'
 import { useDebouncedValue } from '@/lib/use-debounced-value'
@@ -80,7 +81,7 @@ const SearchDialog = ({
       onSuccess: (movie) =>
         setAdded((previous) => new Set(previous).add(movie.tmdbId)),
       // The row is still there and unchanged, so a toast is the whole report.
-      onError: (error) => toast.error(error.message),
+      onError: (error) => toast.error(errorMessage(error)),
     }),
   )
 
