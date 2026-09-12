@@ -55,11 +55,22 @@ app.use((req: Request, res: Response) => {
 
 const PORT = Number(process.env.PORT ?? 3000)
 
+/** How long a client may take to deliver a request. Node's own default is five
+ * minutes, and the largest body here is a 2000 character note. */
+const REQUEST_TIMEOUT_MS = Number(
+  process.env.SERVER_REQUEST_TIMEOUT_MS ?? 30_000,
+)
+
 const server = app.listen(PORT, () => {
   console.log(`[api] listening on http://localhost:${PORT}`)
   console.log(`[api] openapi reference on http://localhost:${PORT}${DOCS_PATH}`)
   void reportAccessToken(tmdb)
 })
+
+server.requestTimeout = REQUEST_TIMEOUT_MS
+// The same deadline, rather than Node's separate minute for headers, which
+// would otherwise outlast the request it is part of.
+server.headersTimeout = REQUEST_TIMEOUT_MS
 
 // Order matters: stop taking requests, then drop the connection pool the
 // in-flight ones are still using.

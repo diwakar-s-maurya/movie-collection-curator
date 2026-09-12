@@ -18,5 +18,12 @@ export const queryClient = new QueryClient({
     // immediately refetched by the component that mounts after it. Half a
     // minute leaves a mutation's invalidation as what refreshes a view.
     queries: { staleTime: 30_000, retry },
+
+    // The default parks a write made offline in an in-memory queue and reports
+    // it as pending, so the editor sits on "Saving…" until a reconnect that a
+    // reload silently discards. Failing it is honest and already handled.
+    // Queries keep the default, where pausing is right: cached data beats an
+    // error state.
+    mutations: { networkMode: 'always' },
   },
 })
