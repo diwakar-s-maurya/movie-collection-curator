@@ -1,0 +1,7 @@
+{
+  // Everything the build config covers, plus the tests. This is what
+  // `pnpm typecheck` runs, so a broken test is a failed type-check.
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "noEmit": true },
+  "exclude": []
+}
