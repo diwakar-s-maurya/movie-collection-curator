@@ -29,3 +29,17 @@ export type User = Awaited<ReturnType<ApiClient['auth']['me']>>
 export type CollectionSummary = Awaited<
   ReturnType<ApiClient['collections']['list']>
 >['results'][number]
+
+/**
+ * One film in the open collection: TMDB's snapshot and the user's annotation
+ * on the same row, as the grid and the annotation sheet both read it.
+ */
+export type CollectionMovie = Awaited<
+  ReturnType<ApiClient['collectionMovies']['list']>
+>['results'][number]
+
+/** One hit in the search dialog: a film, plus whether the open collection
+ * already holds it. */
+export type MovieSearchResult = Awaited<
+  ReturnType<ApiClient['movies']['search']>
+>['results'][number]

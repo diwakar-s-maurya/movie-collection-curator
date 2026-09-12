@@ -12,12 +12,13 @@ import { toast } from 'sonner'
 import { CollectionCard } from '@/components/collection-card'
 import { ConfirmDialog } from '@/components/confirm-dialog'
 import { CreateCollectionForm } from '@/components/create-collection-form'
-import { ErrorText } from '@/components/error-text'
 import { PageHeading } from '@/components/page-heading'
 import { Pagination } from '@/components/pagination'
+import { RetryableError } from '@/components/retryable-error'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { type CollectionSummary, orpc } from '@/lib/orpc'
+import { pageAfterRemoval } from '@/lib/search'
 
 const SKELETON_CARDS = [0, 1, 2, 3]
 
@@ -87,12 +88,7 @@ const Collections = () => {
     orpc.collections.delete.mutationOptions({
       onSuccess: () => {
         setPendingDelete(null)
-
-        // Deleting the last card on a page leaves the user looking at a page
-        // that no longer exists, so that one steps back.
-        const lastOnPage = collections.data?.results.length === 1 && page > 1
-
-        settleList(lastOnPage ? page - 1 : page)
+        settleList(pageAfterRemoval(collections.data?.results.length, page))
       },
       // The dialog stays open on failure: the row is still there, so a toast
       // is what says why.
@@ -128,12 +124,10 @@ const Collections = () => {
     )
   } else if (collections.isError) {
     body = (
-      <div className="flex flex-col items-start gap-3">
-        <ErrorText error={collections.error} />
-        <Button variant="outline" onClick={() => void collections.refetch()}>
-          Try again
-        </Button>
-      </div>
+      <RetryableError
+        error={collections.error}
+        onRetry={() => void collections.refetch()}
+      />
     )
   } else if (isEmpty) {
     // The form is the empty state: the one thing to do is already open, rather

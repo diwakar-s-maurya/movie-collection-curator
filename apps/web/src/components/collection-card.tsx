@@ -1,8 +1,7 @@
 import { Link } from '@tanstack/react-router'
-import { Trash2 } from 'lucide-react'
 import type { Ref } from 'react'
 
-import { Button } from '@/components/ui/button'
+import { DeleteIconButton } from '@/components/delete-icon-button'
 import {
   Card,
   CardAction,
@@ -69,15 +68,11 @@ const CollectionCard = ({
         ) : null}
         <CardAction>
           {/* Above the link's overlay, or it would never be the click. */}
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            className="relative text-muted-foreground hover:text-destructive"
+          <DeleteIconButton
+            label={`Delete ${collection.name}`}
+            className="relative"
             onClick={onDelete}
-          >
-            <Trash2 />
-            <span className="sr-only">Delete {collection.name}</span>
-          </Button>
+          />
         </CardAction>
       </CardHeader>
       <CardContent className="text-muted-foreground">
